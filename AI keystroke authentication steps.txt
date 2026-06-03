@@ -1,0 +1,11 @@
+D:\AI PYTHON PROJECTS\AI keystroke Dynamics Project\keystroke_auth
+
+train.py app.py requirements.txt SecureMail_2FA_AI.html
+
+python data\augment.py
+
+python train.py --dataset ml
+
+python train.py --dataset dl
+
+python app.py

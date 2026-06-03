@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KeyAuth — Data Collector</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --glass:rgba(255,255,255,0.08);--glass-border:rgba(255,255,255,0.15);
+  --accent:#7c6aff;--accent2:#a78bfa;--green:#34d399;--red:#f87171;--amber:#fbbf24;
+  --text:rgba(255,255,255,0.92);--text2:rgba(255,255,255,0.55);--text3:rgba(255,255,255,0.3);
+  --sans:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--sans);min-height:100vh;background:#0a0612;color:var(--text);overflow-x:hidden;}
+.bg{position:fixed;inset:0;z-index:0;
+  background:radial-gradient(ellipse 80% 60% at 20% 10%,rgba(124,106,255,0.25) 0%,transparent 60%),
+  radial-gradient(ellipse 60% 80% at 80% 90%,rgba(167,139,250,0.18) 0%,transparent 60%),#0a0612;}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);
+  background-size:60px 60px;}
+.wrap{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 20px 48px;}
+.glass{background:var(--glass);border:1px solid var(--glass-border);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-radius:20px;}
+header{width:100%;max-width:680px;display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;}
+.logo{display:flex;align-items:center;gap:12px;}
+.logo-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 8px 24px rgba(124,106,255,0.4);}
+.logo-text{font-size:18px;font-weight:600;letter-spacing:-0.5px;}
+.logo-text span{color:var(--accent2);}
+.logo-sub{font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-top:1px;}
+.badge{padding:5px 14px;border-radius:100px;background:rgba(124,106,255,0.15);border:1px solid rgba(124,106,255,0.3);font-size:11px;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);}
+.main-card{width:100%;max-width:680px;padding:32px;}
+
+/* user setup */
+.setup-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+.field-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;}
+.field-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;font-family:var(--sans);font-size:14px;color:var(--text);outline:none;transition:border-color .2s;}
+.field-input:focus{border-color:rgba(124,106,255,0.5);box-shadow:0 0 0 3px rgba(124,106,255,0.1);}
+.field-input::placeholder{color:var(--text3);}
+select.field-input option{background:#1e1b2e;color:#e2e0f0;}
+
+/* session counter */
+.session-counter{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.sc-left{font-size:13px;color:var(--text2);}
+.sc-num{font-size:32px;font-weight:600;color:var(--accent2);font-family:var(--mono);}
+.sc-target{font-size:13px;color:var(--text3);}
+
+/* progress circles */
+.circles{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px;}
+.circle{width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,0.1);background:transparent;transition:all .3s;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text3);}
+.circle.done{background:rgba(52,211,153,0.2);border-color:rgba(52,211,153,0.5);color:var(--green);}
+.circle.active-c{border-color:rgba(124,106,255,0.6);background:rgba(124,106,255,0.15);}
+
+/* phrase */
+.phrase-box{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 16px;margin-bottom:12px;font-size:13px;color:var(--text2);line-height:1.7;}
+.phrase-box strong{color:var(--text);font-family:var(--mono);font-size:14px;}
+
+/* typing area */
+.typing-area{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:16px 18px;font-family:var(--mono);font-size:14px;color:var(--text);outline:none;resize:none;min-height:80px;caret-color:var(--accent);transition:border-color .2s;line-height:1.7;}
+.typing-area:focus{border-color:rgba(124,106,255,0.5);background:rgba(255,255,255,0.07);box-shadow:0 0 0 3px rgba(124,106,255,0.1);}
+.typing-area::placeholder{color:var(--text3);}
+
+/* visualizer */
+.ks-vis{height:44px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;position:relative;overflow:hidden;margin:10px 0;}
+.ks-bar{position:absolute;bottom:0;width:5px;border-radius:2px 2px 0 0;background:linear-gradient(to top,var(--accent),var(--accent2));opacity:0.7;}
+
+/* status */
+.status-row{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);font-family:var(--mono);margin:6px 0;}
+.status-ok{color:var(--green);}
+
+/* buttons */
+.btn{font-family:var(--sans);font-size:14px;font-weight:500;padding:12px 24px;border-radius:12px;cursor:pointer;transition:all .2s;border:none;display:inline-flex;align-items:center;gap:8px;}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 8px 24px rgba(124,106,255,0.35);}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(124,106,255,0.45);}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-ghost{background:rgba(255,255,255,0.06);color:var(--text2);border:1px solid rgba(255,255,255,0.12);}
+.btn-ghost:hover{background:rgba(255,255,255,0.1);}
+.btn-green{background:linear-gradient(135deg,#059669,#34d399);color:#fff;box-shadow:0 8px 24px rgba(52,211,153,0.3);}
+.btn-green:hover{transform:translateY(-2px);}
+.btn-green:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+
+/* data preview */
+.data-preview{background:rgba(0,0,0,0.3);border-radius:10px;border:1px solid rgba(255,255,255,0.06);padding:14px;font-family:var(--mono);font-size:11px;color:var(--text2);max-height:150px;overflow-y:auto;margin-top:16px;line-height:1.9;}
+.dp-ok{color:var(--green);}
+.dp-info{color:var(--accent2);}
+.dp-warn{color:var(--amber);}
+
+/* divider */
+.divider{height:1px;background:rgba(255,255,255,0.06);margin:22px 0;}
+
+/* summary */
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:12px 0;}
+.sum-item{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;}
+.sum-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+.sum-val{font-size:16px;font-weight:500;color:var(--accent2);font-family:var(--mono);}
+
+.alert-box{border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;margin:10px 0;}
+.alert-success{background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);color:var(--green);}
+.alert-info{background:rgba(124,106,255,0.1);border:1px solid rgba(124,106,255,0.25);color:var(--accent2);}
+
+/* OTP screen */
+.otp-method-card{background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);border-radius:16px;padding:20px 28px;cursor:pointer;transition:all .2s;text-align:center;}
+.otp-method-card:hover{border-color:rgba(124,106,255,0.5);background:rgba(124,106,255,0.08);}
+.otp-method-card.selected{border-color:var(--accent);background:rgba(124,106,255,0.15);box-shadow:0 0 0 3px rgba(124,106,255,0.15);}
+.otp-box{text-align:center;padding:24px 0 8px;}
+.otp-title{font-size:20px;font-weight:700;margin-bottom:6px;}
+.otp-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.6;}
+.otp-code{display:inline-flex;gap:10px;margin-bottom:28px;}
+.otp-digit{width:52px;height:64px;border-radius:12px;background:rgba(124,106,255,0.12);border:2px solid rgba(124,106,255,0.4);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:var(--accent2);font-family:var(--mono);}
+.otp-input-row{display:flex;gap:10px;justify-content:center;margin-bottom:16px;}
+.otp-input{width:200px;text-align:center;letter-spacing:8px;font-size:22px;font-family:var(--mono);font-weight:600;padding:14px;}
+.otp-error{color:var(--red);font-size:13px;min-height:20px;margin-bottom:8px;}
+.step-indicator{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:24px;}
+.step-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;transition:all .3s;}
+.step-dot.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 12px rgba(124,106,255,0.4);}
+.step-dot.done{background:rgba(52,211,153,0.2);border:2px solid rgba(52,211,153,0.5);color:var(--green);}
+.step-dot.inactive{background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.1);color:var(--text3);}
+.step-line{width:40px;height:2px;background:rgba(255,255,255,0.1);border-radius:1px;}
+.step-line.done{background:rgba(52,211,153,0.4);}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">📊</div>
+      <div>
+        <div class="logo-text">Key<span>Auth</span> Collector</div>
+        <div class="logo-sub">Real Data Collection Tool</div>
+      </div>
+    </div>
+    <div class="badge" id="header-badge">0 sessions</div>
+  </header>
+
+  <div class="glass main-card">
+
+    <!-- STEP INDICATOR -->
+    <div class="step-indicator" id="step-indicator">
+      <div class="step-dot active" id="step1-dot">1</div>
+      <div class="step-line" id="line1"></div>
+      <div class="step-dot inactive" id="step2-dot">2</div>
+      <div class="step-line" id="line2"></div>
+      <div class="step-dot inactive" id="step3-dot">3</div>
+      <div class="step-line" id="line3"></div>
+      <div class="step-dot inactive" id="step4-dot">4</div>
+    </div>
+
+    <!-- ── SCREEN 1: SETUP ── -->
+    <div id="screen-setup">
+      <div style="font-size:18px;font-weight:600;margin-bottom:6px;">Collect your real keystroke data</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.7;">
+        Type the phrase <strong style="color:var(--text)">20+ times</strong> at your natural speed. Each session captures your real timing fingerprint for training the ML models.
+      </div>
+
+      <div class="setup-row">
+        <div>
+          <label class="field-label">Your name (for the dataset)</label>
+          <input class="field-input" id="user-name" type="text" placeholder="e.g. abhishek_roy" autocomplete="off">
+        </div>
+        <div>
+          <label class="field-label">Target sessions</label>
+          <select class="field-input" id="target-sessions" style="cursor:pointer;">
+            <option value="5">5 sessions (quick test)</option>
+            <option value="10">10 sessions</option>
+            <option value="20">20 sessions (minimum)</option>
+            <option value="30" selected>30 sessions (recommended)</option>
+            <option value="40">40 sessions</option>
+            <option value="50">50 sessions (excellent)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btn-row" style="justify-content:flex-end;margin-top:8px;">
+        <button class="btn btn-primary" onclick="goToOTP()">Continue to Verification →</button>
+      </div>
+    </div>
+
+    <!-- ── SCREEN 2: OTP ── -->
+    <div id="screen-otp" style="display:none;">
+      <div class="otp-box">
+        <div style="font-size:28px;margin-bottom:10px;">🔐</div>
+        <div class="otp-title">Verify your identity</div>
+        <div class="otp-sub">Enter your mobile number to receive a verification code via SMS.</div>
+
+        <!-- Identifier input (SMS only) -->
+        <div id="otp-identifier-row" style="margin-bottom:16px;">
+          <label class="field-label" id="otp-id-label">Mobile number</label>
+          <div style="display:flex;gap:8px;justify-content:center;">
+            <input class="field-input" id="otp-identifier" style="max-width:280px;"
+              placeholder="e.g. +91XXXXXXXXXX" autocomplete="off">
+            <button class="btn btn-primary" id="send-otp-btn" onclick="sendOTP()" style="white-space:nowrap;">
+              Send OTP
+            </button>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:8px;" id="otp-sent-msg"></div>
+        </div>
+
+        <!-- OTP entry (shown after send) -->
+        <div id="otp-entry-row" style="display:none;">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">Enter the 6-digit code</div>
+          <div class="otp-input-row">
+            <input class="field-input otp-input" id="otp-input" type="text" maxlength="6"
+              placeholder="——————" autocomplete="off">
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-top:8px;margin-bottom:4px;">
+            Didn't receive it? <span style="color:var(--accent2);cursor:pointer;text-decoration:underline;" onclick="resendOTP()">Resend</span>
+          </div>
+        </div>
+
+        <div class="otp-error" id="otp-error"></div>
+        <div class="btn-row" style="justify-content:center;gap:12px;margin-top:8px;">
+          <button class="btn btn-ghost" onclick="backToSetup()">← Back</button>
+          <button class="btn btn-primary" id="verify-otp-btn" onclick="verifyOTP()" style="display:none;">
+            Verify & Start →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SCREEN 3: COLLECTION ── -->
+    <div id="screen-collector" style="display:none;">
+
+    <!-- SESSION COUNTER -->
+    <div class="session-counter">
+      <div class="sc-left">
+        Sessions collected<br>
+        <span class="sc-num" id="session-count">0</span>
+        <span class="sc-target"> / <span id="target-label">30</span></span>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Progress</div>
+        <div style="width:200px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;">
+          <div id="prog-fill" style="height:6px;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .4s;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESSION DOTS -->
+    <div class="circles" id="circles"></div>
+
+    <!-- PHRASE -->
+    <div class="phrase-box">
+      Type this exactly: <strong id="phrase-display">The quick brown fox jumps over the lazy dog</strong>
+    </div>
+
+    <!-- INPUT -->
+    <textarea class="typing-area" id="main-input"
+      placeholder="Start typing the phrase above…"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" rows="3"></textarea>
+
+    <!-- VISUALIZER -->
+    <div class="ks-vis" id="ks-vis"></div>
+
+    <!-- STATUS -->
+    <div class="status-row">
+      <span id="status-text">Type the phrase above to begin</span>
+      <span id="event-count" class="dp-info">0 events</span>
+    </div>
+
+    <!-- BUTTONS -->
+    <div class="btn-row">
+      <button class="btn btn-primary" id="save-btn" onclick="saveSession()" disabled>
+        ✓ Save Session
+      </button>
+      <button class="btn btn-ghost" onclick="clearInput()">✕ Clear</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- LIVE STATS (no download here) -->
+    <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">Live session stats:</div>
+    <div class="summary-grid" id="summary-grid">
+      <div class="sum-item"><div class="sum-label">Sessions</div><div class="sum-val" id="s-sessions">0</div></div>
+      <div class="sum-item"><div class="sum-label">Hold mean</div><div class="sum-val" id="s-hold">—</div></div>
+      <div class="sum-item"><div class="sum-label">Flight mean</div><div class="sum-val" id="s-flight">—</div></div>
+      <div class="sum-item"><div class="sum-label">Avg WPM</div><div class="sum-val" id="s-wpm">—</div></div>
+    </div>
+
+    <div class="data-preview" id="data-log">
+      <div><span class="dp-info">[ready]</span> Waiting for first session…</div>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn btn-green" id="finish-btn" onclick="goToDownload()" disabled>
+        Finish &amp; Download →
+      </button>
+      <button class="btn btn-ghost" onclick="clearAll()">⟳ Start Over</button>
+    </div>
+
+    </div><!-- end screen-collector -->
+
+    <!-- ── SCREEN 4: DOWNLOAD ── -->
+    <div id="screen-download" style="display:none;text-align:center;padding:16px 0;">
+      <div style="font-size:40px;margin-bottom:12px;">🎉</div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:8px;">All sessions complete!</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.7;">
+        Your keystroke data has been collected.<br>Download the JSON file and add it to your dataset.
+      </div>
+
+      <div class="summary-grid" id="dl-summary-grid" style="text-align:left;margin-bottom:24px;">
+        <div class="sum-item"><div class="sum-label">Sessions</div><div class="sum-val" id="dl-sessions">—</div></div>
+        <div class="sum-item"><div class="sum-label">Hold mean</div><div class="sum-val" id="dl-hold">—</div></div>
+        <div class="sum-item"><div class="sum-label">Flight mean</div><div class="sum-val" id="dl-flight">—</div></div>
+        <div class="sum-item"><div class="sum-label">Avg WPM</div><div class="sum-val" id="dl-wpm">—</div></div>
+      </div>
+
+      <div class="btn-row" style="justify-content:center;margin-bottom:20px;">
+        <button class="btn btn-green" onclick="downloadData()" style="font-size:15px;padding:14px 32px;">
+          ⬇ Download my_data.json
+        </button>
+      </div>
+
+      <div class="alert-box alert-info" style="text-align:left;">
+        💡 After downloading, put the JSON file in your <strong style="color:var(--text)">keystroke_auth/data/collected/</strong> folder, then run <strong style="color:var(--text)">python data\merge_collected.py</strong>
+      </div>
+
+      <div class="btn-row" style="justify-content:center;margin-top:16px;">
+        <button class="btn btn-ghost" onclick="clearAll()">⟳ Start Over</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Phrases to cycle through ──────────────────────────────────────────────
+const PHRASES = [
+  "The quick brown fox jumps over the lazy dog",
+  "Security is a process not a product",
+  "Keystroke dynamics reveals typing patterns",
+  "Continuous authentication protects sessions",
+  "Machine learning improves biometric systems",
+  "The quick brown fox jumps over the lazy dog",
+  "Abhishek Roy is authenticated by typing speed",
+  "Data science and cybersecurity combined",
+  "The quick brown fox jumps over the lazy dog",
+  "Authentication without passwords is the future",
+];
+
+let sessions = [];
+let events = [];
+let pressMap = {};
+let selectedMethod = '';
+let otpIdentifier  = '';
+
+// ── OTP Flow ──────────────────────────────────────────────────────────────
+function goToOTP() {
+  const name = document.getElementById('user-name').value.trim();
+  if (!name) {
+    document.getElementById('user-name').style.borderColor = 'rgba(248,113,113,0.6)';
+    document.getElementById('user-name').placeholder = 'Please enter your name first';
+    setTimeout(() => {
+      document.getElementById('user-name').style.borderColor = '';
+      document.getElementById('user-name').placeholder = 'e.g. abhishek_roy';
+    }, 2000);
+    return;
+  }
+  // Reset OTP screen state
+  selectedMethod = 'sms';
+  document.getElementById('otp-identifier-row').style.display = 'block';
+  document.getElementById('otp-entry-row').style.display      = 'none';
+  document.getElementById('verify-otp-btn').style.display     = 'none';
+  document.getElementById('otp-sent-msg').textContent         = '';
+  document.getElementById('otp-error').textContent            = '';
+  document.getElementById('otp-identifier').value             = '';
+  document.getElementById('otp-input').value                  = '';
+
+  document.getElementById('screen-setup').style.display = 'none';
+  document.getElementById('screen-otp').style.display   = 'block';
+
+  document.getElementById('step1-dot').className  = 'step-dot done';
+  document.getElementById('step1-dot').textContent = '✓';
+  document.getElementById('line1').className       = 'step-line done';
+  document.getElementById('step2-dot').className   = 'step-dot active';
+}
+
+
+async function sendOTP() {
+  const identifier = document.getElementById('otp-identifier').value.trim();
+  if (!identifier) return;
+
+  otpIdentifier = identifier;
+  const btn = document.getElementById('send-otp-btn');
+  btn.textContent = 'Sending…'; btn.disabled = true;
+  document.getElementById('otp-error').textContent = '';
+
+  try {
+    const res  = await fetch('http://localhost:5050/api/send-otp', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ method: selectedMethod, identifier })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
+
+    document.getElementById('otp-sent-msg').textContent  = '✅ ' + data.message;
+    document.getElementById('otp-entry-row').style.display   = 'block';
+    document.getElementById('verify-otp-btn').style.display  = 'inline-flex';
+    document.getElementById('otp-input').focus();
+  } catch(err) {
+    document.getElementById('otp-error').textContent = '✕ ' + err.message;
+  }
+  btn.textContent = 'Resend'; btn.disabled = false;
+}
+
+function resendOTP() { sendOTP(); }
+
+function backToSetup() {
+  document.getElementById('screen-otp').style.display    = 'none';
+  document.getElementById('screen-setup').style.display  = 'block';
+  document.getElementById('step1-dot').className  = 'step-dot active';
+  document.getElementById('step1-dot').textContent = '1';
+  document.getElementById('line1').className       = 'step-line';
+  document.getElementById('step2-dot').className   = 'step-dot inactive';
+}
+
+async function verifyOTP() {
+  const otp = document.getElementById('otp-input').value.trim();
+  if (!otp) return;
+
+  document.getElementById('otp-error').textContent = '';
+  document.getElementById('verify-otp-btn').textContent = 'Verifying…';
+  document.getElementById('verify-otp-btn').disabled = true;
+
+  try {
+    const res  = await fetch('http://localhost:5050/api/verify-otp', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ identifier: otpIdentifier, otp, method: selectedMethod })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Verification failed');
+
+    // OTP correct — go to collection screen
+    document.getElementById('screen-otp').style.display       = 'none';
+    document.getElementById('screen-collector').style.display = 'block';
+
+    document.getElementById('step2-dot').className  = 'step-dot done';
+    document.getElementById('step2-dot').textContent = '✓';
+    document.getElementById('line2').className       = 'step-line done';
+    document.getElementById('step3-dot').className   = 'step-dot active';
+
+    buildDots();
+    document.getElementById('target-label').textContent = document.getElementById('target-sessions').value;
+  } catch(err) {
+    document.getElementById('otp-error').textContent = '✕ ' + err.message;
+    document.getElementById('otp-input').style.borderColor = 'rgba(248,113,113,0.6)';
+    setTimeout(() => document.getElementById('otp-input').style.borderColor = '', 2000);
+  }
+  document.getElementById('verify-otp-btn').textContent = 'Verify & Start →';
+  document.getElementById('verify-otp-btn').disabled = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('otp-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') verifyOTP();
+  });
+});
+let phraseIndex = 0;
+
+// ── Build session dots ────────────────────────────────────────────────────
+function buildDots() {
+  const target = parseInt(document.getElementById('target-sessions').value);
+  document.getElementById('target-label').textContent = target;
+  const c = document.getElementById('circles');
+  c.innerHTML = '';
+  for (let i = 1; i <= target; i++) {
+    const d = document.createElement('div');
+    d.className = 'circle';
+    d.id = 'dot-' + i;
+    d.textContent = i;
+    c.appendChild(d);
+  }
+}
+document.getElementById('target-sessions').addEventListener('change', buildDots);
+buildDots();
+
+// ── Keystroke capture ─────────────────────────────────────────────────────
+const input = document.getElementById('main-input');
+input.addEventListener('keydown', e => {
+  if (!pressMap[e.key]) pressMap[e.key] = performance.now();
+});
+input.addEventListener('keyup', e => {
+  const pt = pressMap[e.key];
+  if (pt !== undefined) {
+    const rt = performance.now();
+    events.push({ key: e.key, press: pt, release: rt });
+    drawBar(rt - pt);
+    delete pressMap[e.key];
+    updateStatus();
+  }
+});
+
+function drawBar(hold) {
+  const vis = document.getElementById('ks-vis');
+  const bar = document.createElement('div');
+  bar.className = 'ks-bar';
+  bar.style.height = Math.min(90, (hold / 200) * 100) + '%';
+  bar.style.left = (vis.children.length * 7) + 'px';
+  vis.appendChild(bar);
+  if (vis.children.length > 70) vis.removeChild(vis.firstChild);
+}
+
+function updateStatus() {
+  const n = events.length;
+  document.getElementById('event-count').textContent = n + ' events';
+  const ready = n >= 15;
+  document.getElementById('save-btn').disabled = !ready;
+  document.getElementById('status-text').textContent = ready
+    ? '✓ Ready — click Save Session'
+    : 'Keep typing… (' + n + '/15 minimum)';
+}
+
+// ── Feature extraction ────────────────────────────────────────────────────
+function extractFeatures(evts) {
+  const holds = [], flights = [], digraphs = [];
+  for (let i = 0; i < evts.length; i++) {
+    holds.push(evts[i].release - evts[i].press);
+    if (i > 0) {
+      flights.push(Math.max(0, evts[i].press - evts[i - 1].release));
+      digraphs.push(evts[i].press - evts[i - 1].press);
+    }
+  }
+  const stat = a => {
+    if (!a.length) return { mean: 0, std: 1, min: 0, max: 0 };
+    const m = a.reduce((s, v) => s + v, 0) / a.length;
+    const std = Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length) || 1;
+    return { mean: m, std, min: Math.min(...a), max: Math.max(...a) };
+  };
+  const H = stat(holds), F = stat(flights), D = stat(digraphs);
+  const total = evts[evts.length - 1].release - evts[0].press;
+  const chars = evts.filter(e => e.key !== 'Backspace').length;
+  const wpm = (chars / 5) / (total / 60000) || 0;
+  const bsRate = evts.filter(e => e.key === 'Backspace').length / evts.length;
+  return {
+    hold_mean: H.mean, hold_std: H.std, hold_min: H.min, hold_max: H.max,
+    flight_mean: F.mean, flight_std: F.std, flight_min: F.min, flight_max: F.max,
+    digraph_mean: D.mean, digraph_std: D.std, digraph_min: D.min, digraph_max: D.max,
+    total_time_ms: total, wpm, backspace_rate: bsRate, keystroke_count: evts.length,
+  };
+}
+
+// ── Save session ──────────────────────────────────────────────────────────
+function saveSession() {
+  const feats = extractFeatures(events);
+  if (!feats) return;
+
+  const userName = document.getElementById('user-name').value.trim() || 'user';
+  feats.user_id = userName.toLowerCase().replace(/\s+/g, '_');
+  feats.session_num = sessions.length + 1;
+  feats.phrase = PHRASES[phraseIndex % PHRASES.length];
+  feats.timestamp = new Date().toISOString();
+
+  sessions.push(feats);
+  const n = sessions.length;
+  const target = parseInt(document.getElementById('target-sessions').value);
+
+  // Update dot
+  const dot = document.getElementById('dot-' + n);
+  if (dot) { dot.className = 'circle done'; dot.textContent = '✓'; }
+
+  // Progress
+  const pct = Math.min(100, (n / target) * 100);
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('session-count').textContent = n;
+  document.getElementById('header-badge').textContent = n + ' sessions';
+
+  // Log
+  addLog(`Session ${n} saved — hold=${Math.round(feats.hold_mean)}ms  flight=${Math.round(feats.flight_mean)}ms  wpm=${feats.wpm.toFixed(1)}`, 'ok');
+
+  // Update summary
+  updateSummary();
+
+  // Clear for next
+  events = [];
+  pressMap = {};
+  input.value = '';
+  document.getElementById('ks-vis').innerHTML = '';
+  document.getElementById('event-count').textContent = '0 events';
+  document.getElementById('save-btn').disabled = true;
+  document.getElementById('status-text').textContent = 'Type the phrase again for the next session';
+
+  // Cycle phrase
+  phraseIndex++;
+  document.getElementById('phrase-display').textContent = PHRASES[phraseIndex % PHRASES.length];
+
+  // Enable finish button when at least 1 session done
+  document.getElementById('finish-btn').disabled = false;
+
+  if (n >= target) {
+    addLog(`🎉 Target reached! ${n} sessions collected. Click Finish & Download.`, 'ok');
+    document.getElementById('finish-btn').textContent = '🎉 Finish & Download →';
+  }
+  input.focus();
+}
+
+function updateSummary() {
+  const n = sessions.length;
+  document.getElementById('s-sessions').textContent = n;
+  if (n === 0) return;
+  const avg = key => sessions.reduce((s, r) => s + r[key], 0) / n;
+  document.getElementById('s-hold').textContent = Math.round(avg('hold_mean')) + 'ms';
+  document.getElementById('s-flight').textContent = Math.round(avg('flight_mean')) + 'ms';
+  document.getElementById('s-wpm').textContent = avg('wpm').toFixed(1);
+}
+
+// ── Download ──────────────────────────────────────────────────────────────
+function downloadData() {
+  const userName = document.getElementById('user-name').value.trim().replace(/\s+/g, '_') || 'user';
+  const payload = {
+    user_id: userName.toLowerCase(),
+    collected_at: new Date().toISOString(),
+    session_count: sessions.length,
+    sessions: sessions,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = userName.toLowerCase() + '_data.json';
+  a.click();
+  addLog('Downloaded ' + a.download + ' — put it in keystroke_auth/data/collected/', 'ok');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function clearInput() {
+  events = []; pressMap = {};
+  input.value = '';
+  document.getElementById('ks-vis').innerHTML = '';
+  document.getElementById('event-count').textContent = '0 events';
+  document.getElementById('save-btn').disabled = true;
+  document.getElementById('status-text').textContent = 'Type the phrase above to begin';
+}
+
+function goToDownload() {
+  // Copy summary stats to download screen
+  document.getElementById('dl-sessions').textContent = document.getElementById('s-sessions').textContent;
+  document.getElementById('dl-hold').textContent    = document.getElementById('s-hold').textContent;
+  document.getElementById('dl-flight').textContent  = document.getElementById('s-flight').textContent;
+  document.getElementById('dl-wpm').textContent     = document.getElementById('s-wpm').textContent;
+
+  // Switch to download screen
+  document.getElementById('screen-collector').style.display = 'none';
+  document.getElementById('screen-download').style.display  = 'block';
+
+  // Update step indicator
+  document.getElementById('step3-dot').className = 'step-dot done';
+  document.getElementById('step3-dot').textContent = '✓';
+  document.getElementById('line3').className = 'step-line done';
+  document.getElementById('step4-dot').className = 'step-dot active';
+}
+
+function clearAll() {
+  sessions = []; phraseIndex = 0;
+  clearInput();
+
+  // Hide all screens, go back to setup
+  document.getElementById('screen-download').style.display  = 'none';
+  document.getElementById('screen-collector').style.display = 'none';
+  document.getElementById('screen-otp').style.display       = 'none';
+  document.getElementById('screen-setup').style.display     = 'block';
+
+  // Reset step indicators
+  document.getElementById('step1-dot').className = 'step-dot active';
+  document.getElementById('step1-dot').textContent = '1';
+  document.getElementById('step2-dot').className = 'step-dot inactive';
+  document.getElementById('step2-dot').textContent = '2';
+  document.getElementById('step3-dot').className = 'step-dot inactive';
+  document.getElementById('step3-dot').textContent = '3';
+  document.getElementById('step4-dot').className = 'step-dot inactive';
+  document.getElementById('step4-dot').textContent = '4';
+  document.getElementById('line1').className = 'step-line';
+  document.getElementById('line2').className = 'step-line';
+  document.getElementById('line3').className = 'step-line';
+
+  document.getElementById('session-count').textContent = '0';
+  document.getElementById('header-badge').textContent = '0 sessions';
+  document.getElementById('prog-fill').style.width = '0%';
+  document.getElementById('finish-btn').disabled = true;
+  document.getElementById('s-sessions').textContent = '0';
+  ['s-hold','s-flight','s-wpm'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('phrase-display').textContent = PHRASES[0];
+  document.getElementById('data-log').innerHTML = '<div><span class="dp-info">[reset]</span> Ready for new collection…</div>';
+}
+
+function addLog(msg, type = 'info') {
+  const el = document.getElementById('data-log');
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const colors = { info: 'var(--text2)', ok: 'var(--green)', warn: 'var(--amber)' };
+  el.innerHTML = `<div><span class="dp-info">[${ts}]</span> <span style="color:${colors[type]}">${msg}</span></div>` + el.innerHTML;
+}
+</script>
+</body>
+</html>

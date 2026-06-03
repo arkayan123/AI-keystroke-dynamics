@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Secure Inbox</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", sans-serif;
+}
+
+body {
+    background: #0f172a;
+    color: #e2e8f0;
+    display: flex;
+    height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 250px;
+    background: #020617;
+    padding: 20px;
+    border-right: 1px solid #1e293b;
+}
+
+.sidebar h2 {
+    color: #22c55e;
+    margin-bottom: 20px;
+}
+
+.sidebar button {
+    width: 100%;
+    padding: 10px;
+    background: linear-gradient(45deg,#22c55e,#06b6d4);
+    border: none;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    cursor: pointer;
+    color: white;
+}
+
+.sidebar ul {
+    list-style: none;
+}
+
+.sidebar li {
+    padding: 10px;
+    margin: 5px 0;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.sidebar li:hover {
+    background: #1e293b;
+}
+
+/* Main Layout */
+.main {
+    flex: 1;
+    display: flex;
+}
+
+/* Email List */
+.email-list {
+    width: 35%;
+    border-right: 1px solid #1e293b;
+    overflow-y: auto;
+}
+
+.email {
+    padding: 15px;
+    border-bottom: 1px solid #1e293b;
+    cursor: pointer;
+}
+
+.email:hover {
+    background: #1e293b;
+}
+
+.email.active {
+    background: #064e3b;
+}
+
+.email h4 {
+    font-size: 14px;
+}
+
+.email p {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+/* Email View */
+.email-view {
+    flex: 1;
+    padding: 20px;
+}
+
+.email-view h2 {
+    margin-bottom: 10px;
+}
+
+.card {
+    background: #020617;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    border: 1px solid #1e293b;
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <h2>🔐 KeyAuth</h2>
+
+    <button>Compose</button>
+
+    <ul>
+        <li>Inbox</li>
+        <li>Starred</li>
+        <li>Sent</li>
+        <li>Drafts</li>
+        <li>Spam</li>
+        <li>Trash</li>
+    </ul>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+    <!-- Email List -->
+    <div class="email-list">
+
+        <div class="email active" onclick="loadMail('login')">
+            <h4>Team Support</h4>
+            <p>Your login was successful</p>
+        </div>
+
+        <div class="email" onclick="loadMail('alert')">
+            <h4>Security Alert</h4>
+            <p>New login detected</p>
+        </div>
+
+        <div class="email" onclick="loadMail('update')">
+            <h4>Project Update</h4>
+            <p>Keystroke model improved</p>
+        </div>
+
+    </div>
+
+    <!-- Email Content -->
+    <div class="email-view" id="emailContent">
+        <h2>Select an email</h2>
+    </div>
+
+</div>
+
+<script>
+function loadMail(type) {
+    let content = "";
+
+    if (type === "login") {
+        content = `
+        <h2>Login Successful</h2>
+        <p>Hi Abhishek,</p>
+        <p>Your secure login was successful using keystroke authentication.</p>
+
+        <div class="card">
+            <p><b>Device:</b> Windows 11</p>
+            <p><b>IP:</b> 192.168.1.1</p>
+            <p><b>Location:</b> Kolkata</p>
+        </div>
+        `;
+    }
+
+    if (type === "alert") {
+        content = `
+        <h2>Security Alert</h2>
+        <p>We detected a new login attempt.</p>
+        <p>If this wasn't you, change your password immediately.</p>
+        `;
+    }
+
+    if (type === "update") {
+        content = `
+        <h2>Project Update</h2>
+        <p>Your keystroke model accuracy has improved to 92%.</p>
+        `;
+    }
+
+    document.getElementById("emailContent").innerHTML = content;
+}
+</script>
+
+</body>
+</html>

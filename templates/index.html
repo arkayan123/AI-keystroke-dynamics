@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KeyAuth — Keystroke Dynamics Authentication</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap');
+
+:root {
+  --bg: #090b0f;
+  --bg2: #0f1318;
+  --bg3: #141920;
+  --border: #1e2730;
+  --accent: #00e5a0;
+  --accent2: #0090ff;
+  --danger: #ff4060;
+  --warn: #ffaa00;
+  --text: #c8d8e8;
+  --text2: #6a7f90;
+  --mono: 'Space Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid background */
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(0,229,160,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,160,.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events:none; z-index:0;
+}
+
+.wrap { max-width:1200px; margin:0 auto; padding:24px; position:relative; z-index:1; }
+
+/* Header */
+header {
+  display:flex; align-items:center; gap:16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom:20px; margin-bottom:32px;
+}
+.logo-icon {
+  width:44px; height:44px;
+  border:2px solid var(--accent);
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; color:var(--accent);
+  box-shadow: 0 0 20px rgba(0,229,160,.25);
+}
+.logo-text { font-family:var(--sans); font-weight:800; font-size:22px; letter-spacing:-.5px; }
+.logo-text span { color:var(--accent); }
+.header-tag {
+  margin-left:auto;
+  font-size:10px; letter-spacing:2px; text-transform:uppercase;
+  color:var(--text2); border:1px solid var(--border); padding:4px 10px;
+}
+
+/* Grid layout */
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
+.full { grid-column:1/-1; }
+
+/* Cards */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity:0.4;
+}
+.card-title {
+  font-size:10px; letter-spacing:2px; text-transform:uppercase;
+  color:var(--text2); margin-bottom:16px;
+  display:flex; align-items:center; gap:8px;
+}
+.card-title::before { content:'//'; color:var(--accent); }
+
+/* Typing area */
+.typing-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding:16px;
+  font-family:var(--mono); font-size:16px;
+  color: var(--accent);
+  outline:none; resize:none;
+  width:100%; min-height:80px;
+  caret-color: var(--accent);
+  transition: border-color .2s;
+}
+.typing-box:focus { border-color: var(--accent); box-shadow:0 0 0 1px rgba(0,229,160,.2); }
+.typing-box::placeholder { color:var(--text2); }
+
+/* Target phrase */
+.target-phrase {
+  font-size:13px; color:var(--text2);
+  background:var(--bg3); padding:10px 14px;
+  border-left:3px solid var(--accent2);
+  margin-bottom:12px;
+  letter-spacing:.5px;
+}
+.target-phrase strong { color:var(--text); }
+
+/* Buttons */
+.btn {
+  font-family:var(--mono); font-size:12px; letter-spacing:1px;
+  text-transform:uppercase; padding:10px 20px;
+  border:1px solid var(--accent); background:transparent;
+  color:var(--accent); cursor:pointer;
+  transition:all .2s;
+}
+.btn:hover { background:rgba(0,229,160,.1); box-shadow:0 0 16px rgba(0,229,160,.2); }
+.btn-danger { border-color:var(--danger); color:var(--danger); }
+.btn-danger:hover { background:rgba(255,64,96,.1); }
+.btn-secondary { border-color:var(--accent2); color:var(--accent2); }
+.btn-secondary:hover { background:rgba(0,144,255,.1); }
+.btn-row { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+
+/* Select */
+.styled-select {
+  font-family:var(--mono); font-size:12px;
+  background:var(--bg); border:1px solid var(--border);
+  color:var(--text); padding:8px 12px; outline:none;
+  cursor:pointer; width:100%;
+}
+.styled-select:focus { border-color:var(--accent); }
+label.field-label { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text2); display:block; margin-bottom:6px; }
+
+/* Metrics bar */
+.metric { text-align:center; }
+.metric-val { font-family:var(--sans); font-size:28px; font-weight:800; color:var(--accent); display:block; }
+.metric-label { font-size:10px; letter-spacing:1.5px; color:var(--text2); text-transform:uppercase; }
+
+/* Verdict box */
+.verdict {
+  padding:20px;
+  border:2px solid var(--border);
+  text-align:center;
+  transition:all .4s;
+}
+.verdict.genuine { border-color:var(--accent); background:rgba(0,229,160,.05); }
+.verdict.impostor { border-color:var(--danger); background:rgba(255,64,96,.05); }
+.verdict.pending { border-color:var(--warn); background:rgba(255,170,0,.04); }
+.verdict-icon { font-size:36px; margin-bottom:8px; }
+.verdict-label { font-family:var(--sans); font-size:20px; font-weight:800; margin-bottom:4px; }
+.verdict-sub { font-size:11px; color:var(--text2); letter-spacing:1px; }
+
+/* Model predictions table */
+.model-row {
+  display:grid; grid-template-columns:1fr auto auto;
+  gap:8px; align-items:center;
+  padding:8px 0; border-bottom:1px solid var(--border);
+  font-size:12px;
+}
+.model-row:last-child { border-bottom:none; }
+.model-name { color:var(--text2); }
+.model-pred { color:var(--text); font-weight:700; }
+.conf-bar-wrap { width:80px; background:var(--bg); height:4px; }
+.conf-bar { height:4px; background:var(--accent); transition:width .5s; }
+
+/* Feature grid */
+.feat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
+.feat-item {
+  background:var(--bg3); padding:8px 10px;
+  border:1px solid var(--border);
+}
+.feat-name { font-size:9px; letter-spacing:1px; color:var(--text2); text-transform:uppercase; margin-bottom:2px; }
+.feat-val { font-size:14px; font-weight:700; color:var(--accent2); }
+
+/* Results chart */
+.bar-chart { display:flex; flex-direction:column; gap:8px; }
+.bar-row { display:grid; grid-template-columns:130px 1fr 60px; align-items:center; gap:8px; font-size:11px; }
+.bar-track { background:var(--bg3); height:6px; border-radius:0; }
+.bar-fill { height:6px; border-radius:0; transition:width .8s cubic-bezier(.4,0,.2,1); }
+.bar-val { text-align:right; color:var(--text2); }
+
+/* Pulse dot */
+.dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:var(--accent); }
+.dot.blink { animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* Log */
+.log {
+  font-size:11px; color:var(--text2);
+  max-height:120px; overflow-y:auto;
+  background:var(--bg); padding:10px;
+  border:1px solid var(--border);
+}
+.log-line { line-height:1.7; }
+.log-line .ts { color:var(--accent); opacity:.6; }
+.log-line .msg { color:var(--text2); }
+
+/* Tabs */
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:20px; }
+.tab {
+  font-family:var(--mono); font-size:11px; letter-spacing:1px;
+  text-transform:uppercase; padding:8px 16px;
+  background:transparent; border:none; color:var(--text2);
+  cursor:pointer; border-bottom:2px solid transparent;
+  transition:all .2s; margin-bottom:-1px;
+}
+.tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+
+/* Keystroke visualization */
+#ks-vis { height:60px; background:var(--bg); border:1px solid var(--border); position:relative; overflow:hidden; margin-top:10px; }
+.ks-tick { position:absolute; bottom:0; width:4px; background:var(--accent); transition:height .1s; opacity:.7; }
+
+/* Responsive */
+@media(max-width:700px){ .grid,.grid-3{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo-icon">⌨</div>
+    <div>
+      <div class="logo-text">Key<span>Auth</span></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">Keystroke Dynamics · MSc Project</div>
+    </div>
+    <div class="header-tag">v1.0 · Research Demo</div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('live')">Live Auth</button>
+    <button class="tab" onclick="switchTab('simulate')">Simulator</button>
+    <button class="tab" onclick="switchTab('results')">Model Results</button>
+    <button class="tab" onclick="switchTab('about')">How It Works</button>
+  </div>
+
+  <!-- ── LIVE AUTH TAB ─────────────────────────────────────────── -->
+  <div class="tab-pane active" id="tab-live">
+    <div class="grid">
+
+      <!-- Left: input panel -->
+      <div>
+        <div class="card">
+          <div class="card-title">Authentication Session</div>
+
+          <label class="field-label">Claim identity as</label>
+          <select class="styled-select" id="claimed-user">
+            <option value="">— select user —</option>
+          </select>
+
+          <div style="margin-top:16px;">
+            <div class="target-phrase">Type: <strong id="target-text">password123</strong></div>
+            <textarea class="typing-box" id="typing-input"
+              placeholder="Start typing here..." rows="2"
+              autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+            <div id="ks-vis"></div>
+          </div>
+
+          <div id="progress-info" style="margin-top:8px;font-size:11px;color:var(--text2);min-height:18px;"></div>
+
+          <div class="btn-row">
+            <button class="btn" onclick="authenticate()">▶ Authenticate</button>
+            <button class="btn btn-danger" onclick="clearSession()">✕ Clear</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-title">Session Log</div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+
+      <!-- Right: results panel -->
+      <div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-title">Verdict</div>
+          <div class="verdict pending" id="verdict-box">
+            <div class="verdict-icon">⌛</div>
+            <div class="verdict-label" style="color:var(--warn)">Awaiting Input</div>
+            <div class="verdict-sub">Type the phrase and press Authenticate</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-title">Model Predictions</div>
+          <div id="model-predictions">
+            <div style="color:var(--text2);font-size:12px;">Run authentication to see predictions.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Extracted Features</div>
+          <div class="feat-grid" id="features-display">
+            <div style="color:var(--text2);font-size:11px;grid-column:1/-1;">No data yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SIMULATOR TAB ─────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-simulate">
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">Run Simulation</div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.7;">
+          Simulate genuine and impostor typing sessions programmatically. The backend generates realistic timing distributions for each user and runs all models.
+        </p>
+        <label class="field-label">Target User</label>
+        <select class="styled-select" id="sim-user" style="margin-bottom:12px;"></select>
+        <div class="btn-row">
+          <button class="btn" onclick="runSim(false)">▶ Simulate Genuine</button>
+          <button class="btn btn-danger" onclick="runSim(true)">☠ Simulate Impostor</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Simulation Result</div>
+        <div id="sim-result">
+          <div style="color:var(--text2);font-size:12px;">Click a simulation button to run.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px;">
+      <div class="card-title">Feature Comparison</div>
+      <div class="feat-grid" id="sim-features">
+        <div style="color:var(--text2);font-size:11px;grid-column:1/-1;">No simulation run yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RESULTS TAB ────────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-results">
+    <div class="grid-3" style="margin-bottom:20px;">
+      <div class="card">
+        <div class="card-title">Best Accuracy</div>
+        <div class="metric"><span class="metric-val" id="best-acc">—</span><span class="metric-label">Random Forest</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Best ROC-AUC</div>
+        <div class="metric"><span class="metric-val" id="best-auc">—</span><span class="metric-label">Classical ML</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">MLP Val Accuracy</div>
+        <div class="metric"><span class="metric-val" id="deep-acc">—</span><span class="metric-label">Deep Learning</span></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">Classical ML — Accuracy</div>
+        <div class="bar-chart" id="classical-bars">Loading...</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Anomaly Detection — EER ↓ better</div>
+        <div class="bar-chart" id="anomaly-bars">Loading...</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px;">
+      <div class="card-title">Anomaly Detection — AUC</div>
+      <div class="bar-chart" id="anomaly-auc-bars">Loading...</div>
+    </div>
+  </div>
+
+  <!-- ── ABOUT TAB ─────────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-about">
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">What is Keystroke Dynamics?</div>
+        <p style="font-size:13px;line-height:1.9;color:var(--text2);">
+          Keystroke dynamics is a <span style="color:var(--accent)">behavioural biometric</span> — it identifies users based on their unique typing rhythm. Unlike passwords, it is continuous and invisible to the user.<br><br>
+          Each person has a characteristic pattern of:<br>
+        </p>
+        <ul style="margin:12px 0 0 16px;font-size:12px;color:var(--text2);line-height:2.2;list-style:square;">
+          <li><span style="color:var(--accent)">Hold time</span> — how long each key is pressed</li>
+          <li><span style="color:var(--accent)">Flight time</span> — gap between key-up and next key-down</li>
+          <li><span style="color:var(--accent)">Digraph latency</span> — timing of consecutive key pairs</li>
+          <li><span style="color:var(--accent)">Typing speed</span> — words per minute rhythm</li>
+          <li><span style="color:var(--accent)">Error patterns</span> — backspace frequency & placement</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title">System Architecture</div>
+        <div style="font-size:12px;color:var(--text2);line-height:2;">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--accent2)">①</span> Browser captures keydown/keyup timestamps
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--accent2)">②</span> 16 timing features extracted per session
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--accent2)">③</span> Classical ML: SVM · Random Forest · k-NN
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--accent2)">④</span> Deep Learning: MLP / LSTM architecture
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--accent2)">⑤</span> Anomaly Detection: Autoencoder + OCSVM
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+            <span style="color:var(--accent)">⑥</span> Majority vote → Authenticated / Rejected
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Dataset</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.9;">
+          Synthetically generated dataset with <span style="color:var(--accent)">10 simulated users</span>, each with unique timing distributions (mean hold time 78–155ms, mean flight 65–135ms).<br><br>
+          <span style="color:var(--accent)">1,000 labelled sessions</span> — 50% static password, 50% free-text. Models trained with 5-fold stratified cross-validation.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-title">Metrics Explained</div>
+        <ul style="font-size:12px;color:var(--text2);line-height:2.2;list-style:none;">
+          <li><span style="color:var(--accent)">Accuracy</span> — correct identity predictions / total</li>
+          <li><span style="color:var(--accent)">ROC-AUC</span> — area under receiver operating curve</li>
+          <li><span style="color:var(--accent)">FAR</span> — false acceptance rate (impostors let in)</li>
+          <li><span style="color:var(--accent)">FRR</span> — false rejection rate (genuine users blocked)</li>
+          <li><span style="color:var(--accent)">EER</span> — equal error rate (FAR = FRR point, lower = better)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const keystrokeEvents = [];
+let pressMap = {};
+let lastEventTime = 0;
+const TARGET = "password123";
+
+// ── Utility ────────────────────────────────────────────────────────────────
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString('en-GB');
+  const colors = {info:'var(--text2)', ok:'var(--accent)', err:'var(--danger)', warn:'var(--warn)'};
+  el.innerHTML = `<div class="log-line"><span class="ts">[${ts}]</span> <span style="color:${colors[type]||colors.info}">${msg}</span></div>` + el.innerHTML;
+}
+
+function fmtNum(v, decimals=1) {
+  if (v === undefined || v === null || isNaN(v)) return '—';
+  return Number(v).toFixed(decimals);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const tabs = ['live','simulate','results','about'];
+    t.classList.toggle('active', tabs[i]===name);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p=>{
+    p.classList.toggle('active', p.id==='tab-'+name);
+  });
+  if (name==='results') loadResults();
+}
+
+// ── Load users ─────────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const r = await fetch('/api/users');
+    const users = await r.json();
+    const sel1 = document.getElementById('claimed-user');
+    const sel2 = document.getElementById('sim-user');
+    users.forEach(u => {
+      sel1.innerHTML += `<option value="${u.user_id}">${u.user_id} (${u.typing_speed} cps)</option>`;
+      sel2.innerHTML += `<option value="${u.user_id}">${u.user_id}</option>`;
+    });
+  } catch(e) {
+    // Dev mode: populate with placeholder users
+    ['user_01','user_02','user_03','user_04','user_05'].forEach(u => {
+      document.getElementById('claimed-user').innerHTML += `<option value="${u}">${u}</option>`;
+      document.getElementById('sim-user').innerHTML += `<option value="${u}">${u}</option>`;
+    });
+  }
+}
+
+// ── Keystroke capture ──────────────────────────────────────────────────────
+const input = document.getElementById('typing-input');
+
+input.addEventListener('keydown', e => {
+  if (!pressMap[e.key]) {
+    pressMap[e.key] = performance.now();
+  }
+});
+
+input.addEventListener('keyup', e => {
+  const pressTime = pressMap[e.key];
+  if (pressTime !== undefined) {
+    const releaseTime = performance.now();
+    keystrokeEvents.push({ key: e.key, press_time: pressTime, release_time: releaseTime });
+    visualizeKey(releaseTime - pressTime);
+    delete pressMap[e.key];
+
+    const typed = input.value;
+    const progress = Math.min(100, Math.round((typed.length / TARGET.length) * 100));
+    document.getElementById('progress-info').textContent =
+      `${typed.length}/${TARGET.length} chars · ${keystrokeEvents.length} events captured`;
+  }
+});
+
+function visualizeKey(holdTime) {
+  const vis = document.getElementById('ks-vis');
+  const tick = document.createElement('div');
+  tick.className = 'ks-tick';
+  const pct = Math.min(95, (holdTime / 200) * 100);
+  tick.style.height = pct + '%';
+  tick.style.left = (vis.children.length * 7) + 'px';
+  tick.style.opacity = '0.8';
+  vis.appendChild(tick);
+  if (vis.children.length > 80) vis.removeChild(vis.firstChild);
+}
+
+// ── Authenticate ───────────────────────────────────────────────────────────
+async function authenticate() {
+  const claimedUser = document.getElementById('claimed-user').value;
+  if (!claimedUser) { log('Select a user first', 'warn'); return; }
+  if (keystrokeEvents.length < 3) { log('Type more keystrokes first', 'warn'); return; }
+
+  log(`Authenticating as ${claimedUser} with ${keystrokeEvents.length} events...`);
+
+  try {
+    const res = await fetch('/api/authenticate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ events: keystrokeEvents, claimed_user: claimedUser }),
+    });
+    const data = await res.json();
+    if (data.error) { log(data.error, 'err'); return; }
+
+    renderVerdict(data.verdict);
+    renderModelPredictions(data.classical_predictions);
+    renderFeatures(data.features);
+
+    const v = data.verdict;
+    log(`Predicted: ${v.predicted_user} | Claimed: ${v.claimed_user} | Match: ${v.identity_match}`, v.authenticated ? 'ok' : 'err');
+    log(`Anomaly: ${v.anomaly_verdict}`, v.anomaly_verdict === 'GENUINE' ? 'ok' : 'err');
+  } catch(e) {
+    log('API error: ' + e.message, 'err');
+  }
+}
+
+function renderVerdict(v) {
+  const box = document.getElementById('verdict-box');
+  const auth = v.authenticated;
+  const match = v.identity_match;
+  const anomaly = v.anomaly_verdict;
+
+  box.className = 'verdict ' + (auth ? 'genuine' : 'impostor');
+
+  if (auth) {
+    box.innerHTML = `
+      <div class="verdict-icon">✓</div>
+      <div class="verdict-label" style="color:var(--accent)">AUTHENTICATED</div>
+      <div class="verdict-sub">Identity confirmed · ${v.predicted_user}</div>`;
+  } else {
+    const reason = !match ? `Identity mismatch (predicted: ${v.predicted_user})` : `Anomaly detected: ${anomaly}`;
+    box.innerHTML = `
+      <div class="verdict-icon">✕</div>
+      <div class="verdict-label" style="color:var(--danger)">ACCESS DENIED</div>
+      <div class="verdict-sub">${reason}</div>`;
+  }
+}
+
+function renderModelPredictions(preds) {
+  const el = document.getElementById('model-predictions');
+  if (!preds || preds.error) { el.innerHTML = `<div style="color:var(--danger);font-size:12px;">${(preds||{}).error||'Error'}</div>`; return; }
+
+  el.innerHTML = Object.entries(preds).map(([model, p]) => `
+    <div class="model-row">
+      <span class="model-name">${model}</span>
+      <span class="model-pred">${p.predicted_user}</span>
+      <div>
+        <div style="font-size:10px;color:var(--text2);text-align:right;">${Math.round(p.confidence*100)}%</div>
+        <div class="conf-bar-wrap"><div class="conf-bar" style="width:${p.confidence*100}%"></div></div>
+      </div>
+    </div>`).join('');
+}
+
+function renderFeatures(feats) {
+  const el = document.getElementById('features-display');
+  const interesting = ['hold_mean','hold_std','flight_mean','flight_std','digraph_mean','wpm','backspace_rate','total_time_ms'];
+  el.innerHTML = interesting.filter(k => feats[k] !== undefined).map(k => `
+    <div class="feat-item">
+      <div class="feat-name">${k.replace(/_/g,' ')}</div>
+      <div class="feat-val">${fmtNum(feats[k], k==='wpm'||k==='backspace_rate'?1:0)}</div>
+    </div>`).join('');
+}
+
+function clearSession() {
+  keystrokeEvents.length = 0;
+  pressMap = {};
+  input.value = '';
+  document.getElementById('ks-vis').innerHTML = '';
+  document.getElementById('progress-info').textContent = '';
+  document.getElementById('verdict-box').className = 'verdict pending';
+  document.getElementById('verdict-box').innerHTML = `<div class="verdict-icon">⌛</div><div class="verdict-label" style="color:var(--warn)">Awaiting Input</div><div class="verdict-sub">Type the phrase and press Authenticate</div>`;
+  document.getElementById('model-predictions').innerHTML = `<div style="color:var(--text2);font-size:12px;">Run authentication to see predictions.</div>`;
+  document.getElementById('features-display').innerHTML = `<div style="color:var(--text2);font-size:11px;grid-column:1/-1;">No data yet.</div>`;
+  log('Session cleared', 'warn');
+}
+
+// ── Simulator ─────────────────────────────────────────────────────────────
+async function runSim(impostor) {
+  const user = document.getElementById('sim-user').value;
+  log(`Simulating ${impostor?'impostor':'genuine'} session for ${user}...`);
+
+  try {
+    const res = await fetch('/api/simulate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user_id: user, impostor}),
+    });
+    const data = await res.json();
+    if (data.error) { log(data.error,'err'); return; }
+
+    const sr = document.getElementById('sim-result');
+    const a = data.anomaly_detection;
+    const isGenuine = a.verdict === 'GENUINE';
+    sr.innerHTML = `
+      <div style="display:grid;gap:10px;">
+        <div style="font-size:12px;color:var(--text2);">Simulated as: <span style="color:${impostor?'var(--danger)':'var(--accent)'};">${data.simulated_as}</span> · ${data.events_count} events</div>
+        <div style="padding:12px;border:1px solid ${isGenuine?'var(--accent)':'var(--danger)'};background:${isGenuine?'rgba(0,229,160,.05)':'rgba(255,64,96,.05)'};text-align:center;">
+          <div style="font-size:18px;font-family:var(--sans);font-weight:800;color:${isGenuine?'var(--accent)':'var(--danger)'};">${a.verdict}</div>
+          <div style="font-size:11px;color:var(--text2);">Reconstruction error: ${fmtNum(a.reconstruction_error,4)} · threshold: ${fmtNum(a.threshold,4)}</div>
+        </div>
+        ${Object.entries(data.classical_predictions).map(([m,p])=>`
+          <div class="model-row"><span class="model-name">${m}</span><span class="model-pred">${p.predicted_user}</span><span style="font-size:11px;color:var(--text2);">${Math.round(p.confidence*100)}%</span></div>`).join('')}
+      </div>`;
+
+    const sf = document.getElementById('sim-features');
+    const feats = data.features;
+    const keys = ['hold_mean','hold_std','flight_mean','wpm','digraph_mean','backspace_rate'];
+    sf.innerHTML = keys.map(k=>`
+      <div class="feat-item">
+        <div class="feat-name">${k.replace(/_/g,' ')}</div>
+        <div class="feat-val">${fmtNum(feats[k], k==='wpm'||k==='backspace_rate'?1:0)}</div>
+      </div>`).join('');
+
+    log(`Sim result: ${a.verdict} · confidence ${fmtNum(a.confidence,2)}`, isGenuine?'ok':'err');
+  } catch(e) { log('Sim error: '+e.message,'err'); }
+}
+
+// ── Results ────────────────────────────────────────────────────────────────
+let resultsLoaded = false;
+async function loadResults() {
+  if (resultsLoaded) return;
+  try {
+    const res = await fetch('/api/results');
+    const data = await res.json();
+    if (data.error) return;
+
+    // Classical ML bars
+    const cl = data.classical;
+    const bestAcc = Math.max(...Object.values(cl).map(r=>r.accuracy));
+    const bestAuc = Math.max(...Object.values(cl).map(r=>r.roc_auc||0));
+    document.getElementById('best-acc').textContent = (bestAcc*100).toFixed(1)+'%';
+    document.getElementById('best-auc').textContent = bestAuc.toFixed(4);
+
+    document.getElementById('classical-bars').innerHTML = Object.entries(cl).map(([name,r])=>`
+      <div class="bar-row">
+        <span style="color:var(--text2);">${name}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${r.accuracy*100}%;background:var(--accent2);"></div></div>
+        <span class="bar-val">${(r.accuracy*100).toFixed(1)}%</span>
+      </div>`).join('');
+
+    // Deep learning
+    const dl = data.deep_learning;
+    const dlAcc = dl.val_accuracy || (dl.history ? Math.max(...dl.history.val_acc) : 0);
+    document.getElementById('deep-acc').textContent = (dlAcc*100).toFixed(1)+'%';
+
+    // Anomaly
+    const an = data.anomaly_detection;
+    document.getElementById('anomaly-bars').innerHTML = Object.entries(an).map(([name,r])=>`
+      <div class="bar-row">
+        <span style="color:var(--text2);">${name}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${r.EER*100*3}%;background:var(--danger);"></div></div>
+        <span class="bar-val">${(r.EER*100).toFixed(1)}%</span>
+      </div>`).join('');
+
+    document.getElementById('anomaly-auc-bars').innerHTML = Object.entries(an).map(([name,r])=>`
+      <div class="bar-row">
+        <span style="color:var(--text2);">${name}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${r['ROC-AUC']*100}%;background:var(--accent);"></div></div>
+        <span class="bar-val">${r['ROC-AUC'].toFixed(4)}</span>
+      </div>`).join('');
+
+    resultsLoaded = true;
+  } catch(e) {
+    document.getElementById('classical-bars').textContent = 'Run train.py first.';
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadUsers();
+log('System ready. Select a user and start typing.', 'ok');
+</script>
+</body>
+</html>

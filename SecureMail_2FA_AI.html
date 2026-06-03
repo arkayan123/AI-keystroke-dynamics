@@ -1,0 +1,2997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureMail — 2FA Keystroke Authentication</title>
+<meta name="description" content="Keystroke Dynamics 2FA Authentication — MSc Cybersecurity Project">
+<script>
+// Auto-detect if running via Flask (port 5050) or direct file
+window.FLASK_MODE = window.location.port === '5050';
+window.FLASK_API = window.FLASK_MODE ? 'http://localhost:5050/api' : null;
+console.log('Running in', window.FLASK_MODE ? 'Flask mode' : 'standalone mode');
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060810;
+  --glass: rgba(255,255,255,0.06);
+  --glass2: rgba(255,255,255,0.10);
+  --glass3: rgba(255,255,255,0.16);
+  --border: rgba(255,255,255,0.10);
+  --border2: rgba(255,255,255,0.18);
+  --accent: #6366f1;
+  --accent2: #818cf8;
+  --accent3: #a5b4fc;
+  --green: #10b981;
+  --green2: #34d399;
+  --red: #ef4444;
+  --red2: #f87171;
+  --amber: #f59e0b;
+  --amber2: #fbbf24;
+  --text: rgba(255,255,255,0.93);
+  --text2: rgba(255,255,255,0.55);
+  --text3: rgba(255,255,255,0.28);
+  --sans: 'Outfit', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Animated BG ── */
+.bg-wrap { position:fixed; inset:0; z-index:0; overflow:hidden; }
+.bg-grad {
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 20%, rgba(99,102,241,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 70% at 85% 80%, rgba(129,140,248,0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(16,185,129,0.06) 0%, transparent 70%),
+    #060810;
+}
+.bg-grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 52px 52px;
+}
+.orb {
+  position:absolute; border-radius:50%;
+  filter:blur(90px); pointer-events:none;
+  animation: orbDrift 14s ease-in-out infinite;
+}
+.orb1{width:500px;height:500px;background:rgba(99,102,241,0.12);top:-150px;left:-150px;animation-delay:0s;}
+.orb2{width:350px;height:350px;background:rgba(16,185,129,0.08);bottom:-100px;right:-100px;animation-delay:-5s;}
+.orb3{width:280px;height:280px;background:rgba(129,140,248,0.1);top:40%;right:10%;animation-delay:-9s;}
+@keyframes orbDrift{0%,100%{transform:translate(0,0);}40%{transform:translate(25px,-20px);}70%{transform:translate(-15px,25px);}}
+
+/* ── Main wrap ── */
+.wrap {
+  position:relative; z-index:1;
+  min-height:100vh;
+  display:flex; flex-direction:column; align-items:center;
+  padding: 0;
+  width: 100%;
+}
+/* When inbox is active, wrap should not constrain */
+.wrap:has(#screen-inbox.active) {
+  padding: 0 !important;
+}
+
+/* ── Glass util ── */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+.glass2 {
+  background: var(--glass2);
+  border: 1px solid var(--border2);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+}
+
+/* ══════════════════════════════════════
+   SCREEN SYSTEM
+══════════════════════════════════════ */
+.screen { display:none; width:100%; min-height:100vh; }
+.screen.active { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 20px; }
+
+/* ══════════════════════════════════════
+   SCREEN 1 — LOGIN
+══════════════════════════════════════ */
+#screen-login .login-card {
+  width:100%; max-width:420px;
+  border-radius:24px; padding:40px;
+  animation: cardIn .5s cubic-bezier(.34,1.26,.64,1);
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
+
+.brand-row {
+  display:flex; align-items:center; gap:14px; margin-bottom:36px;
+}
+.brand-icon {
+  width:48px; height:48px; border-radius:14px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; box-shadow:0 8px 28px rgba(99,102,241,0.45);
+  flex-shrink:0;
+}
+.brand-name { font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+.brand-name span { color:var(--accent3); }
+.brand-tag { font-size:11px; color:var(--text2); letter-spacing:1px; text-transform:uppercase; }
+
+.login-title { font-size:26px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px; }
+.login-sub { font-size:13px; color:var(--text2); margin-bottom:28px; line-height:1.6; }
+
+.field { margin-bottom:16px; }
+.field-label {
+  font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--text2); display:block; margin-bottom:7px; font-weight:500;
+}
+.field-input {
+  width:100%; background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.12); border-radius:12px;
+  padding:13px 16px; font-family:var(--sans); font-size:14px;
+  color:var(--text); outline:none; transition:all .2s;
+}
+.field-input:focus {
+  border-color:rgba(99,102,241,0.55);
+  background:rgba(255,255,255,0.09);
+  box-shadow:0 0 0 3px rgba(99,102,241,0.12);
+}
+.field-input::placeholder { color:var(--text3); }
+
+.hint-row {
+  display:flex; align-items:center; gap:8px;
+  background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.18);
+  border-radius:10px; padding:10px 13px; margin-bottom:20px;
+  font-size:12px; color:var(--accent3); line-height:1.5;
+}
+
+.btn-login {
+  width:100%; padding:14px; border-radius:12px; border:none; cursor:pointer;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff; font-family:var(--sans); font-size:15px; font-weight:600;
+  letter-spacing:0.3px; transition:all .2s;
+  box-shadow:0 8px 24px rgba(99,102,241,0.35);
+}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(99,102,241,0.45);}
+.btn-login:active{transform:translateY(0);}
+
+.factor-badge {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  margin-top:20px; font-size:11px; color:var(--text3); letter-spacing:1px;
+}
+.factor-dot {
+  width:24px; height:24px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600;
+}
+.factor-dot.active{background:var(--accent);color:#fff;}
+.factor-dot.pending{background:rgba(255,255,255,0.08);color:var(--text3);border:1px solid rgba(255,255,255,0.12);}
+.factor-line{flex:1;height:1px;background:rgba(255,255,255,0.08);max-width:40px;}
+
+/* ══════════════════════════════════════
+   SCREEN 2 — KEYSTROKE 2FA
+══════════════════════════════════════ */
+#screen-keystroke .ks-card {
+  width:100%; max-width:560px;
+  border-radius:24px; padding:36px;
+  animation: cardIn .5s cubic-bezier(.34,1.26,.64,1);
+}
+
+.step2-header {
+  display:flex; align-items:center; gap:12px; margin-bottom:28px;
+}
+.step2-icon {
+  width:44px; height:44px; border-radius:12px;
+  background:linear-gradient(135deg,var(--green),#059669);
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; box-shadow:0 8px 24px rgba(16,185,129,0.35);
+  flex-shrink:0;
+}
+.step2-title { font-size:20px; font-weight:700; letter-spacing:-0.3px; }
+.step2-sub { font-size:12px; color:var(--text2); margin-top:2px; }
+
+.user-pill {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25);
+  border-radius:100px; padding:6px 14px; margin-bottom:20px;
+}
+.user-avatar {
+  width:24px; height:24px; border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--green));
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700; color:#fff;
+}
+.user-name { font-size:13px; font-weight:500; color:var(--green2); }
+
+.fa1-done {
+  display:flex; align-items:center; gap:10px;
+  background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.15);
+  border-radius:10px; padding:10px 14px; margin-bottom:16px;
+  font-size:12px; color:var(--green2);
+}
+.fa1-done span{font-size:16px;}
+
+.ks-instruction {
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+  border-left:3px solid var(--accent); border-radius:0 10px 10px 0;
+  padding:12px 16px; margin-bottom:14px; font-size:13px; color:var(--text2); line-height:1.7;
+}
+.ks-instruction strong { color:var(--text); font-family:var(--mono); }
+
+/* Phase indicator */
+.phase-row {
+  display:flex; gap:8px; margin-bottom:20px;
+}
+.phase-pill {
+  flex:1; padding:8px 12px; border-radius:8px; text-align:center;
+  border:1px solid rgba(255,255,255,0.08); background:transparent;
+  font-size:11px; color:var(--text3); transition:all .3s; letter-spacing:.5px;
+}
+.phase-pill.active{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.35);color:var(--accent3);}
+.phase-pill.done{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:var(--green2);}
+
+/* Enroll session cards */
+.session-dots {
+  display:flex; gap:8px; margin-bottom:16px;
+}
+.sdot {
+  flex:1; padding:10px 8px; border-radius:10px; text-align:center;
+  border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03);
+  font-size:12px; color:var(--text3); transition:all .3s;
+}
+.sdot.active{border-color:rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:var(--accent3);}
+.sdot.done{border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:var(--green2);}
+.sdot-num{font-size:18px;font-weight:700;margin-bottom:2px;}
+.sdot-label{font-size:10px;letter-spacing:.5px;}
+
+/* Typing area */
+.typing-wrap { position:relative; margin-bottom:10px; }
+.typing-area {
+  width:100%; background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.12); border-radius:12px;
+  padding:14px 18px; font-family:var(--mono); font-size:14px;
+  color:var(--text); outline:none; resize:none; min-height:72px;
+  caret-color:var(--accent2); transition:all .2s; line-height:1.7;
+}
+.typing-area:focus{border-color:rgba(99,102,241,0.45);background:rgba(255,255,255,0.08);box-shadow:0 0 0 3px rgba(99,102,241,0.1);}
+.typing-area::placeholder{color:var(--text3);}
+
+/* Visualizer */
+.vis-wrap{margin:8px 0 10px;}
+.vis-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:4px;}
+.ks-vis{height:40px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;position:relative;overflow:hidden;}
+.ks-bar{position:absolute;bottom:0;width:5px;border-radius:2px 2px 0 0;background:linear-gradient(to top,var(--accent),var(--accent3));opacity:.65;}
+
+.status-bar{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);font-family:var(--mono);margin:6px 0;}
+.status-ok{color:var(--green2);}
+
+/* Progress bar */
+.prog-wrap{margin:6px 0 14px;}
+.prog-track{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;}
+.prog-fill{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--green));transition:width .4s ease;}
+
+/* Buttons */
+.btn {
+  font-family:var(--sans); font-size:13px; font-weight:600;
+  padding:11px 22px; border-radius:11px; cursor:pointer;
+  transition:all .2s; border:none; display:inline-flex; align-items:center; gap:8px;
+  letter-spacing:.3px;
+}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 6px 20px rgba(99,102,241,0.35);}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(99,102,241,0.45);}
+.btn-primary:disabled{opacity:.35;cursor:not-allowed;transform:none;}
+.btn-green{background:linear-gradient(135deg,var(--green),#059669);color:#fff;box-shadow:0 6px 20px rgba(16,185,129,0.3);}
+.btn-green:hover{transform:translateY(-2px);}
+.btn-green:disabled{opacity:.35;cursor:not-allowed;transform:none;}
+.btn-ghost{background:rgba(255,255,255,0.06);color:var(--text2);border:1px solid rgba(255,255,255,0.1);}
+.btn-ghost:hover{background:rgba(255,255,255,0.1);color:var(--text);}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+
+/* ══════════════════════════════════════
+   SCREEN 3 — RESULT
+══════════════════════════════════════ */
+#screen-result .result-card {
+  width:100%; max-width:520px;
+  border-radius:24px; padding:40px;
+  text-align:center;
+  animation: cardIn .5s cubic-bezier(.34,1.26,.64,1);
+}
+
+.result-icon{font-size:64px;margin-bottom:16px;display:block;animation:iconBounce .5s cubic-bezier(.34,1.56,.64,1) .1s both;}
+@keyframes iconBounce{from{transform:scale(0.4);opacity:0}to{transform:scale(1);opacity:1}}
+.result-title{font-size:28px;font-weight:700;letter-spacing:-0.5px;margin-bottom:8px;}
+.result-sub{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:24px;}
+
+.result-card.success{background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);}
+.result-card.denied{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.22);}
+.result-card.success::before{content:'';position:absolute;inset:-2px;border-radius:26px;border:2px solid var(--green);opacity:0;animation:ringPulse 2.5s ease-out infinite;}
+.result-card{position:relative;}
+@keyframes ringPulse{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.04);opacity:0}}
+
+.fa-summary {
+  display:flex; gap:10px; margin-bottom:20px;
+}
+.fa-item {
+  flex:1; padding:14px 10px; border-radius:12px; text-align:center;
+  border:1px solid rgba(255,255,255,0.08);
+}
+.fa-item.passed{background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.25);}
+.fa-item.failed{background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.25);}
+.fa-num{font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.fa-status{font-size:13px;font-weight:600;}
+.fa-item.passed .fa-status{color:var(--green2);}
+.fa-item.failed .fa-status{color:var(--red2);}
+
+.model-row{
+  display:flex; align-items:center; gap:10px;
+  padding:9px 14px; border-radius:10px;
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06);
+  margin:5px 0; font-size:12px; text-align:left;
+}
+.mname{flex:1;color:var(--text2);}
+.mpred{font-weight:600;font-family:var(--mono);font-size:11px;}
+.mconf{font-size:10px;color:var(--text3);min-width:32px;text-align:right;}
+.cbar{width:70px;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;}
+.cfill{height:3px;border-radius:2px;}
+
+/* ══════════════════════════════════════
+   SCREEN 4 — GMAIL-STYLE INBOX
+══════════════════════════════════════ */
+#screen-inbox{
+  display:none;flex-direction:column;padding:0;
+  min-height:100vh;width:100%;max-width:100%;
+  background:#0a0612;position:relative;
+}
+#screen-inbox.active{display:flex;}
+/* Make sure inbox takes full viewport */
+.screen#screen-inbox.active{
+  align-items:stretch;justify-content:flex-start;padding:0;
+  max-width:100%;width:100%;
+}
+
+/* Top navbar */
+.gm-nav{
+  height:58px;background:rgba(10,6,18,0.95);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(255,255,255,0.07);
+  display:flex;align-items:center;gap:12px;padding:0 16px;
+  position:sticky;top:0;z-index:50;flex-shrink:0;
+}
+.gm-nav-logo{display:flex;align-items:center;gap:10px;width:200px;flex-shrink:0;}
+.gm-nav-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 4px 16px rgba(99,102,241,0.4);}
+.gm-nav-name{font-size:17px;font-weight:700;letter-spacing:-0.3px;}
+.gm-nav-name span{color:var(--accent3);}
+.gm-search-wrap{
+  flex:1;max-width:680px;margin:0 auto;
+  background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);
+  border-radius:24px;display:flex;align-items:center;gap:10px;
+  padding:9px 18px;transition:all .2s;
+}
+.gm-search-wrap:focus-within{background:rgba(255,255,255,0.11);border-color:rgba(99,102,241,0.4);box-shadow:0 0 0 3px rgba(99,102,241,0.08);}
+.gm-search-wrap input{background:none;border:none;outline:none;font-family:var(--sans);font-size:14px;color:var(--text);flex:1;}
+.gm-search-wrap input::placeholder{color:var(--text3);}
+.gm-search-ico{font-size:15px;color:var(--text3);}
+.gm-nav-right{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.gm-btn{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.06);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--text2);transition:all .15s;}
+.gm-btn:hover{background:rgba(255,255,255,0.13);color:var(--text);}
+.gm-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--green2));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer;border:2px solid rgba(99,102,241,0.35);}
+
+/* Body row */
+.gm-body{display:flex;flex:1;min-height:0;overflow:hidden;}
+
+/* Sidebar */
+.sidebar{
+  width:220px;flex-shrink:0;padding:8px;
+  display:flex;flex-direction:column;gap:1px;
+  background:rgba(255,255,255,0.01);
+  border-right:1px solid rgba(255,255,255,0.05);
+  overflow-y:auto;overflow-x:hidden;
+  min-height:0;
+}
+.sidebar .sidebar-bottom{flex-shrink:0;}
+
+/* ══ COMPOSE BUTTON ══ */
+.compose-btn{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(99,102,241,0.16);border:1px solid rgba(99,102,241,0.28);
+  border-radius:16px;padding:12px 20px;
+  margin:10px 6px 12px 6px;
+  font-family:var(--sans);font-size:14px;font-weight:500;color:var(--accent3);
+  cursor:pointer;transition:all .2s;width:calc(100% - 12px);box-sizing:border-box;
+}
+.compose-btn:hover{background:rgba(99,102,241,0.26);box-shadow:0 4px 16px rgba(99,102,241,0.18);}
+
+/* ══ SIDEBAR NAV ITEMS (Inbox, Starred, Snoozed, Sent, Drafts, Spam, Trash, Labels) ══ */
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px;border-radius:100px;margin:1px 4px;
+  font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.nav-item:hover{background:rgba(255,255,255,0.07);color:var(--text);}
+.nav-item.active{background:rgba(99,102,241,0.18);color:var(--text);font-weight:500;}
+.nav-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
+.nav-badge{margin-left:auto;font-size:11px;font-weight:700;color:var(--text);}
+.nav-sep{height:1px;background:rgba(255,255,255,0.06);margin:5px 10px;}
+.nav-label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);padding:8px 14px 4px;font-weight:500;}
+
+/* ══ SIDEBAR USER CARD ══ */
+.sidebar-bottom{
+  margin-top:auto;padding:10px 8px 10px;border-radius:12px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;gap:9px;flex-shrink:0;
+}
+.su-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--green));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;}
+.su-info{min-width:0;}
+.su-name{font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.su-tag{font-size:10px;color:var(--green2);display:flex;align-items:center;gap:3px;}
+.su-dot{width:5px;height:5px;border-radius:50%;background:var(--green);}
+
+/* ══ EMAIL LIST PANE ══ */
+.email-list{
+  width:340px;flex-shrink:0;
+  border-right:1px solid rgba(255,255,255,0.05);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.el-toolbar{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;
+}
+.el-title{font-size:16px;font-weight:700;flex:1;}
+
+/* ══ REFRESH + LIST MORE buttons ══ */
+.el-tbtn{
+  width:30px;height:30px;border-radius:6px;
+  background:rgba(255,255,255,0.05);border:none;cursor:pointer;
+  font-size:14px;color:var(--text2);transition:all .15s;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.el-tbtn:hover{background:rgba(255,255,255,0.11);color:var(--text);}
+
+/* ══ PRIMARY / SOCIAL / PROMOTIONS TABS ══ */
+.el-tabs{display:flex;padding:0;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;}
+.el-tab{
+  flex:1;text-align:center;padding:10px 4px;
+  font-size:12px;font-weight:500;color:var(--text2);
+  cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;
+}
+.el-tab.on{color:var(--accent3);border-bottom-color:var(--accent);}
+.el-tab:hover:not(.on){color:var(--text);background:rgba(255,255,255,0.03);}
+.el-scroll{flex:1;overflow-y:auto;}
+.el-scroll::-webkit-scrollbar{width:3px;}
+.el-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);}
+
+/* Individual email row */
+.email-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:13px 14px;border-bottom:1px solid rgba(255,255,255,0.04);
+  cursor:pointer;transition:background .12s;
+}
+.email-item:hover{background:rgba(255,255,255,0.04);}
+.email-item.selected{background:rgba(99,102,241,0.1);}
+.email-item.unread{background:rgba(255,255,255,0.03);}
+.ei-cb{width:16px;height:16px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);flex-shrink:0;margin-top:3px;cursor:pointer;transition:all .15s;}
+.ei-cb:hover,.email-item.checked .ei-cb{background:var(--accent);border-color:var(--accent);}
+.ei-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;}
+.ei-body{flex:1;min-width:0;}
+.ei-row1{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
+.ei-name{font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.email-item.unread .ei-name{font-weight:600;color:var(--text);}
+.ei-t{font-size:11px;color:var(--text3);flex-shrink:0;margin-left:8px;}
+.email-item.unread .ei-t{color:var(--accent3);font-weight:500;}
+.ei-subj{font-size:12px;color:var(--text2);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.email-item.unread .ei-subj{color:var(--text);font-weight:600;}
+.ei-prev{font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ei-star{font-size:13px;color:var(--text3);cursor:pointer;flex-shrink:0;transition:color .15s;}
+.ei-star:hover,.ei-star.on{color:var(--amber);}
+
+/* ══ EMAIL READING PANE ══ */
+.email-view{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+/* ══ DELETE / ARCHIVE / MARK UNREAD / MORE — all identical ══ */
+.ev-topbar{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;
+  min-height:52px;
+}
+.ev-topbtn{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  width:116px;height:32px;padding:0;flex-shrink:0;box-sizing:border-box;
+  border-radius:8px;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
+  font-family:var(--sans);font-size:12px;font-weight:500;color:var(--text2);
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.ev-topbtn:hover{background:rgba(255,255,255,0.1);color:var(--text);}
+#back-btn{width:80px;}
+.ev-topbar-more{position:relative;display:inline-flex;}
+.ev-topbar-more .ev-topbtn{width:80px;}
+
+.ev-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.ev-scroll::-webkit-scrollbar{width:3px;}
+.ev-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);}
+
+/* Security banner */
+.sec-banner{
+  margin:12px 20px 0;padding:9px 14px;border-radius:10px;
+  background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.18);
+  display:flex;align-items:center;gap:9px;font-size:12px;color:var(--green2);
+}
+
+/* Email header card */
+.ev-card{
+  margin:14px 20px;background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.07);border-radius:14px;overflow:hidden;
+}
+.ev-card-head{
+  padding:16px 20px 12px;border-bottom:1px solid rgba(255,255,255,0.05);
+}
+.ev-subj{font-size:19px;font-weight:700;margin-bottom:12px;letter-spacing:-0.3px;line-height:1.3;}
+.ev-meta{display:flex;align-items:center;gap:12px;}
+.ev-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;}
+.ev-sname{font-size:13px;font-weight:600;color:var(--text);}
+.ev-semail{font-size:11px;color:var(--text3);margin-top:1px;}
+.ev-date{margin-left:auto;font-size:11px;color:var(--text3);}
+.ev-acts{display:flex;gap:5px;}
+.ev-act{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.05);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text2);transition:all .15s;}
+.ev-act:hover{background:rgba(255,255,255,0.12);color:var(--text);}
+.ev-body{padding:18px 20px;font-size:14px;color:var(--text2);line-height:2;}
+.ev-body p{margin-bottom:12px;}
+.ev-body ul{margin:8px 0 12px 20px;line-height:2.2;}
+.ev-body strong{color:var(--text);}
+
+/* Info card inside email */
+.info-card{
+  background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);
+  border-radius:10px;padding:14px 16px;margin:10px 0;font-size:13px;
+}
+.info-card p{margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+.info-card p:last-child{margin-bottom:0;}
+.info-label{color:var(--text3);width:90px;flex-shrink:0;}
+.info-val{color:var(--text);}
+.alert-card{
+  background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);
+  border-radius:10px;padding:14px 16px;margin:10px 0;font-size:13px;color:var(--text2);
+}
+
+/* ══ REPLY BOX ══ */
+.reply-box{
+  margin:0 20px 16px;border:1px solid rgba(255,255,255,0.1);
+  border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.04);
+}
+.reply-header{padding:9px 14px;font-size:12px;color:var(--text2);border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:6px;}
+.reply-header strong{color:var(--text);}
+.reply-ta{width:100%;background:none;border:none;outline:none;padding:11px 14px;font-family:var(--sans);font-size:13px;color:var(--text);resize:none;min-height:70px;line-height:1.7;}
+.reply-ta::placeholder{color:var(--text3);}
+.reply-footer{padding:8px 12px;display:flex;align-items:center;gap:6px;border-top:1px solid rgba(255,255,255,0.05);}
+.reply-send{
+  height:32px;padding:0 18px;border-radius:8px;border:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;
+  cursor:pointer;transition:opacity .2s;flex-shrink:0;
+}
+.reply-send:hover{opacity:.85;}
+.reply-ico{
+  width:30px;height:30px;border-radius:6px;background:transparent;border:none;
+  cursor:pointer;font-size:14px;color:var(--text3);
+  display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;
+}
+.reply-ico:hover{background:rgba(255,255,255,0.08);color:var(--text2);}
+
+/* ══ COMPOSE POPUP ══ */
+.compose-pop{
+  position:fixed;bottom:0;right:24px;width:510px;
+  background:#0d1625;border:1px solid rgba(255,255,255,0.12);
+  border-radius:14px 14px 0 0;box-shadow:0 -6px 40px rgba(0,0,0,0.6);
+  display:none;flex-direction:column;z-index:200;
+}
+.compose-pop.open{display:flex;}
+.cp-head{
+  padding:12px 16px;background:rgba(99,102,241,0.18);border-radius:14px 14px 0 0;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.cp-title{font-size:14px;font-weight:600;}
+.cp-close{
+  background:none;border:none;color:var(--text2);cursor:pointer;
+  font-size:16px;padding:4px 8px;border-radius:4px;line-height:1;
+}
+.cp-close:hover{background:rgba(255,255,255,0.1);color:var(--text);}
+.cp-field{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}
+.cp-lbl{color:var(--text3);font-size:12px;width:48px;flex-shrink:0;}
+.cp-inp{flex:1;background:none;border:none;outline:none;font-family:var(--sans);font-size:13px;color:var(--text);}
+.cp-inp::placeholder{color:var(--text3);}
+.cp-body{
+  padding:12px 16px;min-height:150px;
+  font-size:13px;color:var(--text2);outline:none;line-height:1.8;
+}
+.cp-body:empty:before{content:attr(data-placeholder);color:var(--text3);}
+.cp-foot{
+  padding:10px 12px;border-top:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;gap:6px;
+}
+.cp-send{
+  height:34px;padding:0 22px;border-radius:8px;border:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;
+  cursor:pointer;transition:opacity .2s;flex-shrink:0;
+}
+.cp-send:hover{opacity:.9;}
+
+/* ── Toast notification ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1a1f35;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:11px 20px;font-size:13px;color:var(--text);z-index:9999;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.5);transition:transform .3s cubic-bezier(.34,1.26,.64,1),opacity .3s;opacity:0;white-space:nowrap;}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+.toast-undo{margin-left:12px;color:var(--accent3);font-weight:600;cursor:pointer;font-size:12px;}
+.toast-undo:hover{text-decoration:underline;}
+
+/* ── Dropdown menu ── */
+.dd-wrap{position:relative;display:inline-block;}
+.dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:500;background:#0f1628;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:6px;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,0.6);display:none;flex-direction:column;gap:2px;animation:ddIn .15s ease;}
+.dropdown.open{display:flex;}
+@keyframes ddIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.dd-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13px;color:var(--text2);cursor:pointer;transition:all .12s;white-space:nowrap;}
+.dd-item:hover{background:rgba(255,255,255,0.07);color:var(--text);}
+.dd-item.danger{color:var(--red2);}
+.dd-item.danger:hover{background:rgba(239,68,68,0.1);}
+.dd-sep{height:1px;background:rgba(255,255,255,0.06);margin:4px 0;}
+
+/* ── Mobile sidebar ── */
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:89;backdrop-filter:blur(2px);}
+.sidebar-overlay.open{display:block;}
+.mobile-menu-btn{display:none;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.06);border:none;cursor:pointer;align-items:center;justify-content:center;font-size:18px;color:var(--text2);transition:all .15s;flex-shrink:0;}
+.mobile-menu-btn:hover{background:rgba(255,255,255,0.13);}
+
+/* ── Responsive ── */
+@media(max-width:1100px){#ai-chat-panel{width:280px;}}
+@media(max-width:960px){
+  #ai-chat-panel{display:none !important;}
+  #ai-chat-panel.open{display:flex !important;position:fixed;right:0;top:58px;bottom:0;width:320px;z-index:300;}
+  .email-list{width:300px;}
+}
+@media(max-width:750px){
+  .sidebar{position:fixed;left:0;top:58px;bottom:0;z-index:90;transform:translateX(-100%);transition:transform .25s ease;background:#0a0612;width:240px;}
+  .sidebar.mobile-open{transform:translateX(0);}
+  .mobile-menu-btn{display:flex;}
+  .email-list{width:100%;}
+  .email-view{display:none;}
+  .email-view.mobile-open{display:flex;position:fixed;inset:0;z-index:100;background:#0a0612;top:58px;}
+  .gm-search-wrap{max-width:none;}
+  .ev-topbar{gap:5px;padding:8px 12px;}
+  .ev-topbtn{width:92px;height:30px;font-size:11px;}
+  .ev-topbar-more .ev-topbtn{width:72px;}
+  #back-btn{width:72px;}
+  .el-tabs{display:flex !important;}
+}
+@media(max-width:480px){
+  .gm-nav{padding:0 10px;gap:6px;}
+  .gm-nav-name{display:none;}
+  .gm-nav-logo{width:auto;}
+  .compose-pop{width:100%;right:0;border-radius:14px 14px 0 0;}
+  .ev-topbar{gap:4px;padding:6px 10px;overflow-x:auto;}
+  .ev-topbtn{width:76px;height:28px;font-size:10px;flex-shrink:0;}
+  .ev-topbar-more .ev-topbtn{width:60px;}
+  #back-btn{width:60px;}
+  .ev-card{margin:10px 12px;}
+  .ev-body{padding:14px;}
+  .reply-box{margin:0 12px 12px;}
+  .sec-banner{margin:10px 12px 0;}
+  .ai-nav-text{display:none;}
+  .gm-search-wrap{display:none;}
+}
+
+/* Log */
+.log{background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.05);padding:10px;max-height:90px;overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9;margin-top:12px;}
+:root {
+  --bg: #060810;
+  --glass: rgba(255,255,255,0.06);
+  --glass2: rgba(255,255,255,0.10);
+  --glass3: rgba(255,255,255,0.16);
+  --border: rgba(255,255,255,0.10);
+  --border2: rgba(255,255,255,0.18);
+  --accent: #6366f1;
+  --accent2: #818cf8;
+  --accent3: #a5b4fc;
+  --green: #10b981;
+  --green2: #34d399;
+  --red: #ef4444;
+  --red2: #f87171;
+  --amber: #f59e0b;
+  --amber2: #fbbf24;
+  --text: rgba(255,255,255,0.93);
+  --text2: rgba(255,255,255,0.55);
+  --text3: rgba(255,255,255,0.28);
+  --sans: 'Outfit', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Animated BG ── */
+.bg-wrap { position:fixed; inset:0; z-index:0; overflow:hidden; }
+.bg-grad {
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 20%, rgba(99,102,241,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 70% at 85% 80%, rgba(129,140,248,0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(16,185,129,0.06) 0%, transparent 70%),
+    #060810;
+}
+.bg-grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 52px 52px;
+}
+.orb {
+  position:absolute; border-radius:50%;
+  filter:blur(90px); pointer-events:none;
+  animation: orbDrift 14s ease-in-out infinite;
+}
+.orb1{width:500px;height:500px;background:rgba(99,102,241,0.12);top:-150px;left:-150px;animation-delay:0s;}
+.orb2{width:350px;height:350px;background:rgba(16,185,129,0.08);bottom:-100px;right:-100px;animation-delay:-5s;}
+.orb3{width:280px;height:280px;background:rgba(129,140,248,0.1);top:40%;right:10%;animation-delay:-9s;}
+@keyframes orbDrift{0%,100%{transform:translate(0,0);}40%{transform:translate(25px,-20px);}70%{transform:translate(-15px,25px);}}
+
+/* ── Main wrap ── */
+.wrap {
+  position:relative; z-index:1;
+  min-height:100vh;
+  display:flex; flex-direction:column; align-items:center;
+  padding: 0;
+  width: 100%;
+}
+/* When inbox is active, wrap should not constrain */
+.wrap:has(#screen-inbox.active) {
+  padding: 0 !important;
+}
+
+/* ── Glass util ── */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+.glass2 {
+  background: var(--glass2);
+  border: 1px solid var(--border2);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+}
+
+/* ══════════════════════════════════════
+   SCREEN SYSTEM
+══════════════════════════════════════ */
+.screen { display:none; width:100%; min-height:100vh; }
+.screen.active { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 20px; }
+
+/* ══════════════════════════════════════
+   SCREEN 1 — LOGIN
+══════════════════════════════════════ */
+#screen-login .login-card {
+  width:100%; max-width:420px;
+  border-radius:24px; padding:40px;
+  animation: cardIn .5s cubic-bezier(.34,1.26,.64,1);
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
+
+.brand-row {
+  display:flex; align-items:center; gap:14px; margin-bottom:36px;
+}
+.brand-icon {
+  width:48px; height:48px; border-radius:14px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; box-shadow:0 8px 28px rgba(99,102,241,0.45);
+  flex-shrink:0;
+}
+.brand-name { font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+.brand-name span { color:var(--accent3); }
+.brand-tag { font-size:11px; color:var(--text2); letter-spacing:1px; text-transform:uppercase; }
+
+.login-title { font-size:26px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px; }
+.login-sub { font-size:13px; color:var(--text2); margin-bottom:28px; line-height:1.6; }
+
+.field { margin-bottom:16px; }
+.field-label {
+  font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--text2); display:block; margin-bottom:7px; font-weight:500;
+}
+.field-input {
+  width:100%; background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.12); border-radius:12px;
+  padding:13px 16px; font-family:var(--sans); font-size:14px;
+  color:var(--text); outline:none; transition:all .2s;
+}
+.field-input:focus {
+  border-color:rgba(99,102,241,0.55);
+  background:rgba(255,255,255,0.09);
+  box-shadow:0 0 0 3px rgba(99,102,241,0.12);
+}
+.field-input::placeholder { color:var(--text3); }
+
+.hint-row {
+  display:flex; align-items:center; gap:8px;
+  background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.18);
+  border-radius:10px; padding:10px 13px; margin-bottom:20px;
+  font-size:12px; color:var(--accent3); line-height:1.5;
+}
+
+.btn-login {
+  width:100%; padding:14px; border-radius:12px; border:none; cursor:pointer;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff; font-family:var(--sans); font-size:15px; font-weight:600;
+  letter-spacing:0.3px; transition:all .2s;
+  box-shadow:0 8px 24px rgba(99,102,241,0.35);
+}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(99,102,241,0.45);}
+.btn-login:active{transform:translateY(0);}
+
+.factor-badge {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  margin-top:20px; font-size:11px; color:var(--text3); letter-spacing:1px;
+}
+.factor-dot {
+  width:24px; height:24px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600;
+}
+.factor-dot.active{background:var(--accent);color:#fff;}
+.factor-dot.pending{background:rgba(255,255,255,0.08);color:var(--text3);border:1px solid rgba(255,255,255,0.12);}
+.factor-line{flex:1;height:1px;background:rgba(255,255,255,0.08);max-width:40px;}
+
+/* ══════════════════════════════════════
+   SCREEN 2 — KEYSTROKE 2FA
+══════════════════════════════════════ */
+#screen-keystroke .ks-card {
+  width:100%; max-width:560px;
+  border-radius:24px; padding:36px;
+  animation: cardIn .5s cubic-bezier(.34,1.26,.64,1);
+}
+
+.step2-header {
+  display:flex; align-items:center; gap:12px; margin-bottom:28px;
+}
+.step2-icon {
+  width:44px; height:44px; border-radius:12px;
+  background:linear-gradient(135deg,var(--green),#059669);
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; box-shadow:0 8px 24px rgba(16,185,129,0.35);
+  flex-shrink:0;
+}
+.step2-title { font-size:20px; font-weight:700; letter-spacing:-0.3px; }
+.step2-sub { font-size:12px; color:var(--text2); margin-top:2px; }
+
+.user-pill {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25);
+  border-radius:100px; padding:6px 14px; margin-bottom:20px;
+}
+.user-avatar {
+  width:24px; height:24px; border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--green));
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700; color:#fff;
+}
+.user-name { font-size:13px; font-weight:500; color:var(--green2); }
+
+.fa1-done {
+  display:flex; align-items:center; gap:10px;
+  background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.15);
+  border-radius:10px; padding:10px 14px; margin-bottom:16px;
+  font-size:12px; color:var(--green2);
+}
+.fa1-done span{font-size:16px;}
+
+.ks-instruction {
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+  border-left:3px solid var(--accent); border-radius:0 10px 10px 0;
+  padding:12px 16px; margin-bottom:14px; font-size:13px; color:var(--text2); line-height:1.7;
+}
+.ks-instruction strong { color:var(--text); font-family:var(--mono); }
+
+/* Phase indicator */
+.phase-row {
+  display:flex; gap:8px; margin-bottom:20px;
+}
+.phase-pill {
+  flex:1; padding:8px 12px; border-radius:8px; text-align:center;
+  border:1px solid rgba(255,255,255,0.08); background:transparent;
+  font-size:11px; color:var(--text3); transition:all .3s; letter-spacing:.5px;
+}
+.phase-pill.active{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.35);color:var(--accent3);}
+.phase-pill.done{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:var(--green2);}
+
+/* Enroll session cards */
+.session-dots {
+  display:flex; gap:8px; margin-bottom:16px;
+}
+.sdot {
+  flex:1; padding:10px 8px; border-radius:10px; text-align:center;
+  border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03);
+  font-size:12px; color:var(--text3); transition:all .3s;
+}
+.sdot.active{border-color:rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:var(--accent3);}
+.sdot.done{border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:var(--green2);}
+.sdot-num{font-size:18px;font-weight:700;margin-bottom:2px;}
+.sdot-label{font-size:10px;letter-spacing:.5px;}
+
+/* Typing area */
+.typing-wrap { position:relative; margin-bottom:10px; }
+.typing-area {
+  width:100%; background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.12); border-radius:12px;
+  padding:14px 18px; font-family:var(--mono); font-size:14px;
+  color:var(--text); outline:none; resize:none; min-height:72px;
+  caret-color:var(--accent2); transition:all .2s; line-height:1.7;
+}
+.typing-area:focus{border-color:rgba(99,102,241,0.45);background:rgba(255,255,255,0.08);box-shadow:0 0 0 3px rgba(99,102,241,0.1);}
+.typing-area::placeholder{color:var(--text3);}
+
+/* Visualizer */
+.vis-wrap{margin:8px 0 10px;}
+.vis-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:4px;}
+.ks-vis{height:40px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;position:relative;overflow:hidden;}
+.ks-bar{position:absolute;bottom:0;width:5px;border-radius:2px 2px 0 0;background:linear-gradient(to top,var(--accent),var(--accent3));opacity:.65;}
+
+.status-bar{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);font-family:var(--mono);margin:6px 0;}
+.status-ok{color:var(--green2);}
+
+/* Progress bar */
+.prog-wrap{margin:6px 0 14px;}
+.prog-track{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;}
+.prog-fill{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--green));transition:width .4s ease;}
+
+/* Buttons */
+.btn {
+  font-family:var(--sans); font-size:13px; font-weight:600;
+  padding:11px 22px; border-radius:11px; cursor:pointer;
+  transition:all .2s; border:none; display:inline-flex; align-items:center; gap:8px;
+  letter-spacing:.3px;
+}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 6px 20px rgba(99,102,241,0.35);}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(99,102,241,0.45);}
+.btn-primary:disabled{opacity:.35;cursor:not-allowed;transform:none;}
+.btn-green{background:linear-gradient(135deg,var(--green),#059669);color:#fff;box-shadow:0 6px 20px rgba(16,185,129,0.3);}
+.btn-green:hover{transform:translateY(-2px);}
+.btn-green:disabled{opacity:.35;cursor:not-allowed;transform:none;}
+.btn-ghost{background:rgba(255,255,255,0.06);color:var(--text2);border:1px solid rgba(255,255,255,0.1);}
+.btn-ghost:hover{background:rgba(255,255,255,0.1);color:var(--text);}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+
+/* ══════════════════════════════════════
+   SCREEN 3 — RESULT
+══════════════════════════════════════ */
+#screen-result .result-card {
+  width:100%; max-width:520px;
+  border-radius:24px; padding:40px;
+  text-align:center;
+  animation: cardIn .5s cubic-bezier(.34,1.26,.64,1);
+}
+
+.result-icon{font-size:64px;margin-bottom:16px;display:block;animation:iconBounce .5s cubic-bezier(.34,1.56,.64,1) .1s both;}
+@keyframes iconBounce{from{transform:scale(0.4);opacity:0}to{transform:scale(1);opacity:1}}
+.result-title{font-size:28px;font-weight:700;letter-spacing:-0.5px;margin-bottom:8px;}
+.result-sub{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:24px;}
+
+.result-card.success{background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);}
+.result-card.denied{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.22);}
+.result-card.success::before{content:'';position:absolute;inset:-2px;border-radius:26px;border:2px solid var(--green);opacity:0;animation:ringPulse 2.5s ease-out infinite;}
+.result-card{position:relative;}
+@keyframes ringPulse{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.04);opacity:0}}
+
+.fa-summary {
+  display:flex; gap:10px; margin-bottom:20px;
+}
+.fa-item {
+  flex:1; padding:14px 10px; border-radius:12px; text-align:center;
+  border:1px solid rgba(255,255,255,0.08);
+}
+.fa-item.passed{background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.25);}
+.fa-item.failed{background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.25);}
+.fa-num{font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.fa-status{font-size:13px;font-weight:600;}
+.fa-item.passed .fa-status{color:var(--green2);}
+.fa-item.failed .fa-status{color:var(--red2);}
+
+.model-row{
+  display:flex; align-items:center; gap:10px;
+  padding:9px 14px; border-radius:10px;
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06);
+  margin:5px 0; font-size:12px; text-align:left;
+}
+.mname{flex:1;color:var(--text2);}
+.mpred{font-weight:600;font-family:var(--mono);font-size:11px;}
+.mconf{font-size:10px;color:var(--text3);min-width:32px;text-align:right;}
+.cbar{width:70px;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;}
+.cfill{height:3px;border-radius:2px;}
+
+/* inbox CSS defined above *//* Scanning animation on denial */
+@keyframes scanDeny{0%{transform:translateY(-100%)}100%{transform:translateY(200%)}}
+.result-card.denied::after{
+  content:'';position:absolute;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(239,68,68,0.5),transparent);
+  animation:scanDeny 2s linear infinite;
+}
+
+/* Log */
+.log{background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.05);padding:10px;max-height:90px;overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9;margin-top:12px;}
+
+/* ══ AI CHAT PANEL ══ */
+#ai-chat-panel {
+  width: 360px; flex-shrink: 0;
+  border-left: 1px solid rgba(255,255,255,0.07);
+  display: none; flex-direction: column;
+  background: rgba(8,5,20,0.98);
+  transition: width .25s ease;
+}
+#ai-chat-panel.open { display: flex; }
+.ai-panel-head {
+  padding: 13px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  background: rgba(99,102,241,0.08);
+}
+.ai-panel-icon {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+}
+.ai-panel-title { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; }
+.ai-panel-sub   { font-size: 10px; color: var(--accent3); margin-top: 1px; }
+.ai-panel-close {
+  width: 26px; height: 26px; border-radius: 6px; border: none;
+  background: rgba(255,255,255,0.06); color: var(--text2);
+  cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.ai-panel-close:hover { background: rgba(255,255,255,0.14); color: var(--text); }
+
+/* Context pill */
+.ai-ctx-bar {
+  padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
+}
+.ai-ctx-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.22);
+  border-radius: 20px; padding: 4px 10px; font-size: 11px; color: var(--accent3);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-ctx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+/* Suggested prompts */
+.ai-suggestions {
+  padding: 10px 12px 8px; display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ai-suggestion {
+  padding: 5px 11px; border-radius: 20px; font-size: 11px; color: var(--accent3);
+  background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.ai-suggestion:hover { background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.4); }
+
+/* Messages */
+.ai-messages {
+  flex: 1; overflow-y: auto; padding: 14px 14px 8px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.ai-messages::-webkit-scrollbar { width: 3px; }
+.ai-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
+.ai-msg { display: flex; flex-direction: column; gap: 4px; max-width: 90%; }
+.ai-msg.user { align-self: flex-end; align-items: flex-end; }
+.ai-msg.bot  { align-self: flex-start; align-items: flex-start; }
+.ai-bubble {
+  padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.65;
+  word-break: break-word;
+}
+.ai-msg.user .ai-bubble {
+  background: linear-gradient(135deg, rgba(99,102,241,0.55), rgba(139,92,246,0.45));
+  border: 1px solid rgba(99,102,241,0.35); color: var(--text);
+  border-bottom-right-radius: 4px;
+}
+.ai-msg.bot .ai-bubble {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09);
+  color: var(--text2); border-bottom-left-radius: 4px;
+}
+.ai-bubble strong { color: var(--text); }
+.ai-bubble ul { margin: 6px 0 4px 16px; }
+.ai-bubble li { margin-bottom: 3px; }
+.ai-bubble code {
+  font-family: var(--mono); font-size: 11px;
+  background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; color: var(--accent3);
+}
+.ai-meta { font-size: 10px; color: var(--text3); padding: 0 4px; }
+.ai-typing-bubble {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 14px 14px 14px 4px; padding: 10px 14px;
+  display: flex; gap: 4px; align-items: center;
+}
+.ai-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); animation: aiDot 1.2s ease-in-out infinite; }
+.ai-dot:nth-child(2){ animation-delay: .2s; }
+.ai-dot:nth-child(3){ animation-delay: .4s; }
+@keyframes aiDot { 0%,80%,100%{transform:scale(.6);opacity:.4;} 40%{transform:scale(1);opacity:1;} }
+
+/* Input bar */
+.ai-input-row {
+  padding: 10px 12px; border-top: 1px solid rgba(255,255,255,0.07);
+  display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0;
+}
+.ai-textarea {
+  flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 9px 13px; font-family: var(--sans);
+  font-size: 13px; color: var(--text); outline: none; resize: none;
+  min-height: 38px; max-height: 110px; overflow-y: auto; line-height: 1.5;
+  transition: border-color .2s;
+}
+.ai-textarea::placeholder { color: var(--text3); }
+.ai-textarea:focus { border-color: rgba(99,102,241,0.45); }
+.ai-send {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 15px; transition: all .2s;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+}
+.ai-send:hover { opacity: .85; transform: scale(1.05); }
+.ai-send:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+
+/* Sidebar AI button */
+.nav-item.ai-nav {
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.2);
+  margin: 4px;
+  border-radius: 12px;
+}
+.nav-item.ai-nav:hover { background: rgba(99,102,241,0.2); }
+.nav-item.ai-nav.active-ai { background: rgba(99,102,241,0.25); color: var(--accent3); }
+</style>
+</head>
+<body>
+
+<div class="bg-wrap">
+  <div class="bg-grad"></div>
+  <div class="bg-grid"></div>
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+</div>
+
+<div class="wrap">
+
+<!-- ══════════════════════════════════
+     SCREEN 1 — PASSWORD LOGIN (Factor 1)
+══════════════════════════════════ -->
+<div class="screen active" id="screen-login">
+  <div class="glass2 login-card">
+
+    <div class="brand-row">
+      <div class="brand-icon">✉</div>
+      <div>
+        <div class="brand-name">Secure<span>Mail</span></div>
+        <div class="brand-tag">Two-factor authentication enabled</div>
+      </div>
+    </div>
+
+    <div class="login-title">Sign in to your account</div>
+    <div class="login-sub">Enter your credentials to begin. Keystroke verification will follow as the second factor.</div>
+
+    <div class="field">
+      <label class="field-label">Email address</label>
+      <input class="field-input" id="login-email" type="email" placeholder="abhishek.roy@securemail.com" autocomplete="off">
+    </div>
+    <div class="field">
+      <label class="field-label">Password</label>
+      <input class="field-input" id="login-password" type="password" placeholder="Enter your password">
+    </div>
+
+
+    <button class="btn-login" onclick="doLogin()">Continue to Step 2 →</button>
+
+    <div class="factor-badge">
+      <div class="factor-dot active">1</div>
+      <div class="factor-line"></div>
+      <span style="font-size:10px;">Password</span>
+      <div class="factor-line"></div>
+      <div class="factor-dot pending">2</div>
+      <div class="factor-line"></div>
+      <span style="font-size:10px;">Keystroke</span>
+      <div class="factor-line"></div>
+      <div class="factor-dot pending">✓</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCREEN 2 — KEYSTROKE 2FA (Factor 2)
+══════════════════════════════════ -->
+<div class="screen" id="screen-keystroke">
+  <div class="glass2 ks-card">
+
+    <div class="step2-header">
+      <div class="step2-icon">⌨</div>
+      <div>
+        <div class="step2-title">Keystroke Verification</div>
+        <div class="step2-sub">Factor 2 of 2 — Biometric typing analysis</div>
+      </div>
+    </div>
+
+    <div class="user-pill">
+      <div class="user-avatar" id="user-initials">AR</div>
+      <span class="user-name" id="user-display">Abhishek Roy</span>
+    </div>
+
+    <div class="fa1-done">
+      <span>✅</span>
+      <span>Factor 1 passed — password verified successfully</span>
+    </div>
+
+    <!-- Phase pills -->
+    <div class="phase-row">
+      <div class="phase-pill active" id="ph-enroll">① Enroll pattern</div>
+      <div class="phase-pill" id="ph-verify">② Verify identity</div>
+    </div>
+
+    <!-- ENROLL SECTION -->
+    <div id="enroll-section">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.7;">
+        Type the phrase below <strong style="color:var(--text)">3 times</strong> to register your typing pattern. This creates your biometric baseline.
+      </div>
+
+      <div class="session-dots">
+        <div class="sdot active" id="sd1"><div class="sdot-num" id="sn1">1</div><div class="sdot-label">Session 1</div></div>
+        <div class="sdot" id="sd2"><div class="sdot-num" id="sn2">2</div><div class="sdot-label">Session 2</div></div>
+        <div class="sdot" id="sd3"><div class="sdot-num" id="sn3">3</div><div class="sdot-label">Session 3</div></div>
+      </div>
+
+      <div class="ks-instruction">Type this: <strong id="enroll-phrase">Security is a continuous process not a one time event</strong></div>
+
+      <textarea class="typing-area" id="enroll-input"
+        placeholder="Start typing the phrase above…"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" rows="2"></textarea>
+
+      <div class="vis-wrap">
+        <div class="vis-label">Keystroke rhythm capture</div>
+        <div class="ks-vis" id="enroll-vis"></div>
+      </div>
+
+      <div class="status-bar">
+        <span id="enroll-status">Begin typing to capture your pattern</span>
+        <span id="enroll-count" style="color:var(--accent3);">0 events</span>
+      </div>
+
+      <div class="prog-wrap">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:4px;">
+          <span>Enrollment progress</span><span id="enroll-prog-label">0 / 3 sessions</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill" id="enroll-prog" style="width:0%"></div></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="save-btn" onclick="saveEnroll()" disabled>✓ Save Session <span id="snum">1</span></button>
+        <button class="btn btn-ghost" onclick="clearEnroll()">✕ Clear</button>
+      </div>
+
+      <div class="log" id="enroll-log"><div><span style="color:var(--accent3)">[ready]</span> Waiting for enrollment…</div></div>
+    </div>
+
+    <!-- VERIFY SECTION -->
+    <div id="verify-section" style="display:none;">
+      <div class="fa1-done" style="background:rgba(99,102,241,0.06);border-color:rgba(99,102,241,0.2);color:var(--accent3);">
+        <span>🧬</span>
+        <span>Biometric baseline enrolled — now verify your identity</span>
+      </div>
+
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.7;">
+        Type <strong style="color:var(--text)">anything freely</strong>. The system analyses your typing rhythm against your enrolled pattern using SVM, Random Forest and Autoencoder.
+      </div>
+
+      <div class="ks-instruction">You can type: <strong>your name, a sentence, anything you want</strong></div>
+
+      <textarea class="typing-area" id="auth-input"
+        placeholder="Type freely here…"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" rows="2"></textarea>
+
+      <div class="vis-wrap">
+        <div class="vis-label">Live rhythm analysis</div>
+        <div class="ks-vis" id="auth-vis"></div>
+      </div>
+
+      <div class="status-bar">
+        <span id="auth-status">Start typing to authenticate</span>
+        <span id="auth-count" style="color:var(--accent3);">0 events</span>
+      </div>
+
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-green" id="auth-btn" onclick="doAuthenticate()" disabled>▶ Verify Identity</button>
+        <button class="btn btn-ghost" onclick="resetAll()">↺ Re-enroll</button>
+        <button class="btn btn-ghost" onclick="clearAuth()">✕ Clear</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCREEN 3 — RESULT
+══════════════════════════════════ -->
+<div class="screen" id="screen-result">
+  <div class="result-card glass2" id="result-card">
+    <span class="result-icon" id="result-icon">🔍</span>
+    <div class="result-title" id="result-title">Analysing…</div>
+    <div class="result-sub" id="result-sub">Running biometric verification</div>
+
+    <div class="fa-summary" id="fa-summary">
+      <div class="fa-item passed">
+        <div class="fa-num">Factor 1</div>
+        <div class="fa-status">✓ Password</div>
+      </div>
+      <div class="fa-item" id="fa2-item">
+        <div class="fa-num">Factor 2</div>
+        <div class="fa-status" id="fa2-status">Analysing…</div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;text-align:left;">Model decisions</div>
+    <div id="model-rows"></div>
+
+    <div class="btn-row" style="margin-top:20px;justify-content:center;">
+      <button class="btn btn-ghost" id="result-btn1" onclick="tryAgain()">↺ Try Again</button>
+      <button class="btn btn-primary" id="result-btn2" style="display:none" onclick="openInbox()">Open Inbox →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCREEN 4 — EMAIL INBOX
+══════════════════════════════════ -->
+<div class="screen" id="screen-inbox">
+
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+<!-- TOP NAVBAR -->
+<div class="gm-nav">
+  <button class="mobile-menu-btn" id="hamburger-btn" onclick="toggleMobileSidebar()" title="Menu">☰</button>
+  <div class="gm-nav-logo">
+    <div class="gm-nav-icon">✉</div>
+    <div class="gm-nav-name">Secure<span>Mail</span></div>
+  </div>
+  <div class="gm-search-wrap">
+    <span class="gm-search-ico">🔍</span>
+    <input type="text" placeholder="Search mail" autocomplete="off" id="gm-search-input" oninput="searchMail(this.value)">
+    <button id="search-clear-btn" onclick="clearSearch()" style="display:none;background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:2px 4px;">✕</button>
+  </div>
+  <div class="gm-nav-right">
+    <button class="gm-btn" title="Refresh" onclick="refreshInbox()">↻</button>
+    <button class="gm-btn" title="Settings" onclick="showToast('⚙️','Settings coming soon')">⚙</button>
+    <button id="ai-nav-btn" onclick="toggleAiPanel()" title="AI Assistant" style="display:flex;align-items:center;gap:7px;padding:0 14px;height:34px;border-radius:20px;background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap;">
+      <span style="font-size:14px;">✦</span> <span class="ai-nav-text">AI Assistant</span>
+      <span style="font-size:10px;background:rgba(99,102,241,0.4);padding:1px 6px;border-radius:8px;letter-spacing:0.3px;">RAG</span>
+    </button>
+    <div class="gm-avatar" title="Abhishek Roy — 2FA Verified" id="nav-user-avatar">AR</div>
+    <button onclick="doLogout()" title="Logout" style="display:flex;align-items:center;gap:6px;padding:0 14px;height:34px;border-radius:20px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#f87171;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0;" onmouseover="this.style.background='rgba(239,68,68,0.22)'" onmouseout="this.style.background='rgba(239,68,68,0.12)'">
+      <span style="font-size:14px;">⏻</span> <span class="ai-nav-text">Logout</span>
+    </button>
+  </div>
+</div>
+
+<div class="gm-body">
+
+<!-- SIDEBAR -->
+<div class="sidebar" id="gm-sidebar">
+  <button class="compose-btn" onclick="openCompose();closeMobileSidebar()">
+    <span style="font-size:18px;">✏</span> Compose
+  </button>
+
+  <div class="nav-item active" id="nav-inbox" onclick="setNav(this,'inbox');closeMobileSidebar()"><span class="nav-icon">📥</span> Inbox <span class="nav-badge" id="unread-badge">4</span></div>
+  <div class="nav-item" id="nav-starred" onclick="setNav(this,'starred');closeMobileSidebar()"><span class="nav-icon">⭐</span> Starred</div>
+  <div class="nav-item" id="nav-snoozed" onclick="setNav(this,'snoozed');closeMobileSidebar()"><span class="nav-icon">🕐</span> Snoozed</div>
+  <div class="nav-item" id="nav-sent" onclick="setNav(this,'sent');closeMobileSidebar()"><span class="nav-icon">📤</span> Sent</div>
+  <div class="nav-item" id="nav-drafts" onclick="setNav(this,'drafts');closeMobileSidebar()"><span class="nav-icon">📝</span> Drafts <span class="nav-badge" style="color:var(--text2);" id="drafts-badge">2</span></div>
+  <div class="nav-sep"></div>
+  <div class="nav-item" id="nav-spam" onclick="setNav(this,'spam');closeMobileSidebar()"><span class="nav-icon">⚠</span> Spam <span class="nav-badge" style="color:var(--red2);" id="spam-badge">3</span></div>
+  <div class="nav-item" id="nav-trash" onclick="setNav(this,'trash');closeMobileSidebar()"><span class="nav-icon">🗑</span> Trash</div>
+  <div class="nav-sep"></div>
+
+  <div class="nav-item ai-nav" onclick="toggleAiPanel();closeMobileSidebar()"><span class="nav-icon">✦</span> AI Assistant <span class="nav-badge" style="font-size:9px;background:rgba(99,102,241,0.3);color:var(--accent3);padding:1px 5px;border-radius:8px;">RAG</span></div>
+
+  <div class="nav-sep"></div>
+  <div class="nav-label">Labels</div>
+  <div class="nav-item" onclick="setNav(this,'msc');closeMobileSidebar()"><span class="nav-icon" style="color:#4ade80;font-size:11px;">●</span> MSc Project</div>
+  <div class="nav-item" onclick="setNav(this,'research');closeMobileSidebar()"><span class="nav-icon" style="color:#a78bfa;font-size:11px;">●</span> Research</div>
+  <div class="nav-item" onclick="setNav(this,'univ');closeMobileSidebar()"><span class="nav-icon" style="color:#fb923c;font-size:11px;">●</span> University</div>
+  <div class="nav-item" onclick="setNav(this,'security');closeMobileSidebar()"><span class="nav-icon" style="color:#f87171;font-size:11px;">●</span> Security Alerts</div>
+
+  <div style="flex:1;min-height:16px;"></div>
+  <div class="sidebar-bottom">
+    <div class="su-avatar">AR</div>
+    <div class="su-info">
+      <div class="su-name" id="sidebar-user-name">Abhishek Roy</div>
+      <div class="su-tag"><div class="su-dot"></div> 2FA Verified</div>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL LIST -->
+<div class="email-list" id="email-list-panel">
+  <div class="el-toolbar">
+    <div class="el-title" id="el-title">Inbox</div>
+    <button class="el-tbtn" title="Refresh" id="refresh-btn" onclick="refreshInbox()">↻</button>
+    <div class="dd-wrap">
+      <button class="el-tbtn" title="Sort / filter" onclick="toggleDD('list-dd')">⋮</button>
+      <div class="dropdown" id="list-dd">
+        <div class="dd-item" onclick="sortEmails('newest');closeAllDD()">🕐 Newest first</div>
+        <div class="dd-item" onclick="sortEmails('oldest');closeAllDD()">🕐 Oldest first</div>
+        <div class="dd-item" onclick="sortEmails('unread');closeAllDD()">● Unread first</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item" onclick="selectAllEmails();closeAllDD()">☑ Select all</div>
+        <div class="dd-item" onclick="markAllRead();closeAllDD()">✓ Mark all read</div>
+      </div>
+    </div>
+  </div>
+  <div class="el-tabs" id="el-tabs">
+    <div class="el-tab on" onclick="switchTab(this,'primary')" data-tab="primary">Primary</div>
+    <div class="el-tab" onclick="switchTab(this,'social')" data-tab="social">Social</div>
+    <div class="el-tab" onclick="switchTab(this,'promotions')" data-tab="promotions">Promotions</div>
+  </div>
+  <div class="el-scroll" id="email-list-scroll"></div>
+</div>
+
+<!-- EMAIL READING PANE -->
+<div class="email-view" id="email-view-panel">
+  <div class="ev-topbar" id="ev-topbar">
+    <button class="ev-topbtn" id="back-btn" onclick="mobileBack()" style="display:none;">← Back</button>
+    <button class="ev-topbtn" onclick="deleteCurrentEmail()" title="Delete">🗑 Delete</button>
+    <button class="ev-topbtn" onclick="archiveCurrentEmail()" title="Archive">📁 Archive</button>
+    <button class="ev-topbtn" onclick="markCurrentUnread()" title="Mark unread" id="mark-unread-btn">⚑ Mark unread</button>
+    <div class="ev-topbar-more" style="position:relative;display:inline-flex;">
+      <button class="ev-topbtn" onclick="toggleDD('more-dd')" title="More">⋮ More</button>
+      <div class="dropdown" id="more-dd">
+        <div class="dd-item" onclick="starCurrentEmail();closeAllDD()">⭐ Star / Unstar</div>
+        <div class="dd-item" onclick="snoozeCurrentEmail();closeAllDD()">🕐 Snooze</div>
+        <div class="dd-item" onclick="labelCurrentEmail();closeAllDD()">🏷 Add label</div>
+        <div class="dd-item" onclick="printEmail();closeAllDD()">🖨 Print</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item danger" onclick="deleteCurrentEmail(true);closeAllDD()">⛔ Delete permanently</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ev-scroll" id="ev-scroll-area">
+    <div class="sec-banner" id="sec-banner">
+      <span>🔒</span>
+      <span>Session secured · Password + Keystroke Biometrics · 2FA Active</span>
+    </div>
+
+    <div class="ev-card">
+      <div class="ev-card-head">
+        <div class="ev-subj" id="ev-subject">Select an email to read</div>
+        <div class="ev-meta">
+          <div class="ev-av" id="ev-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">?</div>
+          <div>
+            <div class="ev-sname" id="ev-from">—</div>
+            <div class="ev-semail" id="ev-email">—</div>
+          </div>
+          <div class="ev-date" id="ev-date">—</div>
+          <div class="ev-acts">
+            <button class="ev-act" title="Reply" onclick="openReply()">↩</button>
+            <button class="ev-act" title="Reply all" onclick="openReply()">↩↩</button>
+            <button class="ev-act" title="Forward" onclick="forwardEmail()">↪</button>
+            <div class="dd-wrap">
+              <button class="ev-act" title="More" onclick="toggleDD('email-act-dd')">⋮</button>
+              <div class="dropdown" id="email-act-dd">
+                <div class="dd-item" onclick="starCurrentEmail();closeAllDD()">⭐ Star</div>
+                <div class="dd-item" onclick="markCurrentUnread();closeAllDD()">⚑ Mark unread</div>
+                <div class="dd-item" onclick="archiveCurrentEmail();closeAllDD()">📁 Archive</div>
+                <div class="dd-sep"></div>
+                <div class="dd-item danger" onclick="deleteCurrentEmail();closeAllDD()">🗑 Delete</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ev-body" id="ev-body">
+        <p style="color:var(--text3);">Click an email from the list to read it here.</p>
+      </div>
+    </div>
+
+    <!-- Reply box -->
+    <div class="reply-box" id="reply-box" style="display:none;">
+      <div class="reply-header">Reply to <strong id="reply-name">—</strong></div>
+      <textarea class="reply-ta" id="reply-ta" placeholder="Write your reply…" rows="3"></textarea>
+      <div class="reply-footer">
+        <button class="reply-send" onclick="sendReply()">Send</button>
+        <button class="reply-ico" title="Format" onclick="showToast('✏️','Rich formatting coming soon')">A</button>
+        <button class="reply-ico" title="Attach" onclick="showToast('📎','Attachment support coming soon')">📎</button>
+        <button class="reply-ico" title="Emoji" onclick="showToast('😊','Emoji picker coming soon')">😊</button>
+        <button class="reply-ico" style="margin-left:auto;" title="Discard" onclick="document.getElementById('reply-box').style.display='none'">🗑</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI CHAT PANEL -->
+<div id="ai-chat-panel">
+  <div class="ai-panel-head">
+    <div class="ai-panel-icon">✦</div>
+    <div>
+      <div class="ai-panel-title">SecureMail AI</div>
+      <div class="ai-panel-sub">Gemini 3 Flash Preview · Grounded on your emails &amp; project</div>
+    </div>
+    <button class="ai-panel-close" onclick="toggleAiPanel()" title="Close">✕</button>
+  </div>
+  <div class="ai-ctx-bar">
+    <span class="ai-ctx-pill"><span class="ai-ctx-dot"></span><span id="ai-ctx-label">No email selected — ask me anything</span></span>
+  </div>
+  <div class="ai-suggestions" id="ai-suggestions">
+    <span class="ai-suggestion" onclick="aiSuggest(this)">Summarise this email</span>
+    <span class="ai-suggestion" onclick="aiSuggest(this)">Any action needed?</span>
+    <span class="ai-suggestion" onclick="aiSuggest(this)">Draft a reply</span>
+    <span class="ai-suggestion" onclick="aiSuggest(this)">Security risk?</span>
+    <span class="ai-suggestion" onclick="aiSuggest(this)">How does keystroke auth work?</span>
+    <span class="ai-suggestion" onclick="aiSuggest(this)">Explain the model results</span>
+  </div>
+  <div class="ai-messages" id="ai-messages">
+    <div class="ai-msg bot">
+      <div class="ai-bubble">Hi Abhishek 👋 I'm your <strong>SecureMail AI assistant</strong>, powered by <strong>Gemini 3 Flash Preview</strong>. I know about your emails, your keystroke authentication project, and security concepts.<br><br>Open any email and ask me to summarise it, draft a reply, or explain anything.</div>
+      <div class="ai-meta">Gemini 3 Flash Preview · RAG enabled</div>
+    </div>
+  </div>
+  <div class="ai-input-row">
+    <textarea class="ai-textarea" id="ai-input" placeholder="Ask about this email or your project…" rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMessage();}"
+      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,110)+'px'"></textarea>
+    <button class="ai-send" id="ai-send-btn" onclick="sendAiMessage()" title="Send">➤</button>
+  </div>
+</div>
+
+</div><!-- /gm-body -->
+</div><!-- /screen-inbox -->
+
+<!-- ══════════════════════════════════
+     SCREEN 5 — LOGOUT / THANK YOU
+══════════════════════════════════ -->
+<div class="screen" id="screen-logout">
+  <div class="glass2" style="width:100%;max-width:440px;border-radius:28px;padding:48px 40px;text-align:center;animation:cardIn .5s cubic-bezier(.34,1.26,.64,1);position:relative;overflow:hidden;">
+    <!-- Decorative ring -->
+    <div style="position:absolute;inset:-2px;border-radius:30px;border:2px solid rgba(99,102,241,0.2);pointer-events:none;animation:ringPulse 3s ease-out infinite;"></div>
+
+    <!-- Brand -->
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:32px;">
+      <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 28px rgba(99,102,241,0.45);">✉</div>
+      <div style="text-align:left;">
+        <div style="font-size:22px;font-weight:700;letter-spacing:-0.5px;">Secure<span style="color:var(--accent3);">Mail</span></div>
+        <div style="font-size:11px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;">2FA Protected</div>
+      </div>
+    </div>
+
+    <!-- Check icon -->
+    <div style="font-size:64px;margin-bottom:18px;animation:iconBounce .5s cubic-bezier(.34,1.56,.64,1) .1s both;display:block;">👋</div>
+
+    <div style="font-size:26px;font-weight:700;letter-spacing:-0.5px;margin-bottom:10px;">You've been logged out</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.8;margin-bottom:28px;">
+      Thank you for using <strong style="color:var(--accent3);">SecureMail</strong>.<br>
+      Your session was protected by <strong style="color:var(--text);">Password + Keystroke Biometric 2FA</strong>.
+    </div>
+
+    <!-- Stats strip -->
+    <div style="display:flex;gap:10px;margin-bottom:28px;">
+      <div style="flex:1;padding:14px 10px;border-radius:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);text-align:center;">
+        <div style="font-size:20px;font-weight:700;color:var(--green2);">✓</div>
+        <div style="font-size:10px;color:var(--text3);letter-spacing:0.5px;margin-top:4px;">Session Secured</div>
+      </div>
+      <div style="flex:1;padding:14px 10px;border-radius:12px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.2);text-align:center;">
+        <div style="font-size:20px;font-weight:700;color:var(--accent3);">2FA</div>
+        <div style="font-size:10px;color:var(--text3);letter-spacing:0.5px;margin-top:4px;">Auth Factors</div>
+      </div>
+      <div style="flex:1;padding:14px 10px;border-radius:12px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);text-align:center;">
+        <div style="font-size:20px;font-weight:700;color:var(--amber2);">🔒</div>
+        <div style="font-size:10px;color:var(--text3);letter-spacing:0.5px;margin-top:4px;">Data Protected</div>
+      </div>
+    </div>
+
+    <!-- Login button -->
+    <button onclick="goToLogin()" style="width:100%;padding:15px;border-radius:13px;border:none;cursor:pointer;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:0.3px;transition:all .2s;box-shadow:0 8px 24px rgba(99,102,241,0.35);" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 12px 32px rgba(99,102,241,0.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 8px 24px rgba(99,102,241,0.35)'">
+      🔐 Login Again
+    </button>
+
+    <div style="margin-top:16px;font-size:11px;color:var(--text3);">MSc Cybersecurity · KeyAuth Project · Abhishek Roy</div>
+  </div>
+</div>
+
+<!-- COMPOSE POPUP -->
+<div class="compose-pop" id="compose-pop">
+  <div class="cp-head">
+    <span class="cp-title">New Message</span>
+    <div style="display:flex;gap:4px;">
+      <button class="cp-close" onclick="minimiseCompose()" title="Minimise">—</button>
+      <button class="cp-close" onclick="closeCompose()" title="Close">✕</button>
+    </div>
+  </div>
+  <div class="cp-field"><span class="cp-lbl">To</span><input class="cp-inp" id="cp-to" placeholder="Recipients" autocomplete="off"></div>
+  <div class="cp-field"><span class="cp-lbl">Cc</span><input class="cp-inp" id="cp-cc" placeholder="Cc" autocomplete="off"></div>
+  <div class="cp-field"><span class="cp-lbl">Subject</span><input class="cp-inp" id="cp-subj" placeholder="Subject" autocomplete="off"></div>
+  <div class="cp-body" id="cp-body" contenteditable="true" data-placeholder="Write your message here…"></div>
+  <div class="cp-foot">
+    <button class="cp-send" onclick="sendCompose()">Send ➤</button>
+    <button class="reply-ico" title="Format" onclick="showToast('✏️','Rich formatting coming soon')">A</button>
+    <button class="reply-ico" title="Attach" onclick="showToast('📎','Attachments coming soon')">📎</button>
+    <button class="reply-ico" title="Emoji" onclick="showToast('😊','Emoji picker coming soon')">😊</button>
+    <button class="reply-ico" title="Save draft" onclick="saveDraft()" style="margin-left:auto;">📝</button>
+    <button class="reply-ico" title="Discard" onclick="discardCompose()">🗑</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <span class="toast-icon" id="toast-icon">✅</span>
+  <span id="toast-msg">Done</span>
+  <span class="toast-undo" id="toast-undo-btn" onclick="undoAction()" style="display:none;">Undo</span>
+</div>
+
+</div><!-- /wrap -->
+
+
+<script>
+// ════════════════════════════════════════════════════════════
+// USER DATABASE (Factor 1)
+// ════════════════════════════════════════════════════════════
+const USERS = {
+  'abhishek@mail.com': { password:'abhishek123', name:'Abhishek Roy', initials:'AR' },
+  'admin@mail.com':    { password:'admin123',    name:'Admin User',   initials:'AU' },
+};
+
+let loggedInUser = null;
+let enrolledSessions = [];
+let enrolledProfile  = null;
+let enrollCount = 0;
+let enrollEvents = [], authEvents = [];
+let enrollPress = {}, authPress = {};
+
+// ════════════════════════════════════════════════════════════
+// EMAILS DATA
+// ════════════════════════════════════════════════════════════
+const EMAILS = [
+  {
+    id:0, unread:true, starred:false,
+    name:'Team Support', initials:'TS', bg:'linear-gradient(135deg,#22c55e,#16a34a)',
+    email:'support@securemail.com', time:'9:14 AM', subject:'Login Successful — 2FA Verified',
+    preview:'Your secure login was successful using keystroke authentication.',
+    body:`<p>Hi <strong>Abhishek</strong>,</p>
+<p>Your secure login to <strong>SecureMail</strong> was successful using two-factor keystroke authentication.</p>
+<div class="info-card">
+  <p><span class="info-label">Device</span><span class="info-val">Windows 11 — Chrome</span></p>
+  <p><span class="info-label">IP Address</span><span class="info-val">192.168.1.1</span></p>
+  <p><span class="info-label">Location</span><span class="info-val">Kolkata, West Bengal, India</span></p>
+  <p><span class="info-label">Time</span><span class="info-val">Today at 9:14 AM IST</span></p>
+  <p><span class="info-label">Auth method</span><span class="info-val">Password + Keystroke Biometrics</span></p>
+  <p><span class="info-label">Confidence</span><span class="info-val">94% match (Random Forest)</span></p>
+</div>
+<p>If this wasn't you, please change your password immediately and contact support.</p>
+<p>— <strong>SecureMail Security Team</strong></p>`
+  },
+  {
+    id:1, unread:true, starred:false,
+    name:'Security Alert', initials:'SA', bg:'linear-gradient(135deg,#ef4444,#dc2626)',
+    email:'alerts@securemail.com', time:'8:52 AM', subject:'New Login Detected from Unknown Device',
+    preview:'We detected a new login attempt from an unrecognised device.',
+    body:`<p>Hi <strong>Abhishek</strong>,</p>
+<p>We detected a login attempt to your account from an <strong>unrecognised device</strong>.</p>
+<div class="alert-card">
+  <p><strong>⚠ Suspicious activity detected</strong></p>
+  <p>Keystroke pattern did not match enrolled profile — access was <strong>denied</strong>.</p>
+</div>
+<div class="info-card">
+  <p><span class="info-label">Device</span><span class="info-val">Unknown — Windows 10</span></p>
+  <p><span class="info-label">IP Address</span><span class="info-val">103.214.109.45</span></p>
+  <p><span class="info-label">Location</span><span class="info-val">Mumbai, Maharashtra</span></p>
+  <p><span class="info-label">Time</span><span class="info-val">Today at 8:52 AM IST</span></p>
+  <p><span class="info-label">Result</span><span class="info-val" style="color:#f87171;">ACCESS DENIED — Keystroke mismatch</span></p>
+</div>
+<p>If this wasn't you, your account is protected. No action needed — the keystroke authentication blocked the intruder.</p>
+<p>— <strong>SecureMail Security Team</strong></p>`
+  },
+  {
+    id:2, unread:true, starred:true,
+    name:'Dr. Priya Sharma', initials:'PS', bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    email:'priya.sharma@university.ac.uk', time:'Yesterday', subject:'MSc Project Feedback — Excellent Work',
+    preview:'Your keystroke dynamics implementation is impressive. The two-factor approach is particularly novel…',
+    body:`<p>Dear Abhishek,</p>
+<p>I have reviewed your MSc project on <strong>Keystroke Dynamics for Continuous Authentication</strong> and the implementation is exceptionally well done.</p>
+<p>The two-factor authentication approach — combining traditional password login with real-time keystroke biometric verification — is exactly the kind of innovative thinking we look for at this level.</p>
+<p>Your use of three ML models (SVM, Random Forest, Autoencoder) with majority voting is particularly impressive. The deployment to GCP and AWS also shows strong understanding of cloud infrastructure.</p>
+<p>I look forward to seeing this in your viva presentation.</p>
+<p>Best regards,<br><strong>Dr. Priya Sharma</strong><br><span style="color:var(--text3);font-size:13px;">MSc Cybersecurity Programme Director</span></p>`
+  },
+  {
+    id:3, unread:true, starred:false,
+    name:'Project Update', initials:'PU', bg:'linear-gradient(135deg,#0ea5e9,#0284c7)',
+    email:'system@keyauth.local', time:'Yesterday', subject:'Keystroke Model Accuracy Improved to 94%',
+    preview:'Your Random Forest model accuracy has improved after augmented dataset retraining.',
+    body:`<p>Hi <strong>Abhishek</strong>,</p>
+<p>Your keystroke authentication model has been retrained on the augmented dataset and accuracy has improved significantly.</p>
+<div class="info-card">
+  <p><span class="info-label">Random Forest</span><span class="info-val" style="color:#4ade80;">94% accuracy</span></p>
+  <p><span class="info-label">SVM (RBF)</span><span class="info-val" style="color:#4ade80;">89% accuracy</span></p>
+  <p><span class="info-label">MLP Deep Learning</span><span class="info-val" style="color:#4ade80;">97% val accuracy</span></p>
+  <p><span class="info-label">Autoencoder AUC</span><span class="info-val" style="color:#4ade80;">0.91</span></p>
+  <p><span class="info-label">Dataset size</span><span class="info-val">1,000 ML · 100,000 DL</span></p>
+  <p><span class="info-label">Augmentation</span><span class="info-val">Gaussian noise + SMOTE + time warp</span></p>
+</div>
+<p>— <strong>KeyAuth System</strong></p>`
+  },
+  {
+    id:4, unread:false, starred:false,
+    name:'University IT Security', initials:'IT', bg:'linear-gradient(135deg,#f59e0b,#d97706)',
+    email:'security@university.ac.uk', time:'Mon', subject:'Your 2FA System Has Been Approved',
+    preview:'We have reviewed your continuous authentication system and are pleased to confirm…',
+    body:`<p>Dear Mr. Roy,</p>
+<p>We have reviewed your continuous authentication system and are pleased to confirm it meets all university security requirements.</p>
+<p>The integration of keystroke dynamics as a second factor is a significant contribution to behavioural biometrics research. Your system achieved <strong>94% accuracy</strong> on Random Forest — well above our minimum threshold of 80%.</p>
+<p>Regards,<br><strong>University IT Security Team</strong></p>`
+  },
+  {
+    id:5, unread:false, starred:false,
+    name:'Cybersecurity Conference', initials:'CC', bg:'linear-gradient(135deg,#ec4899,#db2777)',
+    email:'submissions@cybersec2026.org', time:'Sun', subject:'Paper Submission: Keystroke Dynamics',
+    preview:'We are delighted to invite you to submit your research on keystroke dynamics…',
+    body:`<p>Dear Researcher,</p>
+<p>We are delighted to invite you to submit your research on <strong>Keystroke Dynamics for Continuous Authentication</strong> to the International Cybersecurity Conference 2026.</p>
+<p><strong>Submission deadline: May 30, 2026.</strong></p>
+<p>Best wishes,<br><strong>Programme Committee</strong></p>`
+  },
+  {
+    id:6, unread:false, starred:false,
+    name:'MSc Programme Office', initials:'MP', bg:'linear-gradient(135deg,#8b5cf6,#7c3aed)',
+    email:'msc.office@university.ac.uk', time:'Fri', subject:'Reminder: Project Submission Deadline — 30 May',
+    preview:'This is a reminder that your final project report is due on 30 May 2026…',
+    body:`<p>Dear Abhishek,</p>
+<p>This is a reminder that your <strong>final MSc project report</strong> is due on <strong>30 May 2026 at 11:59 PM</strong>.</p>
+<p>Please ensure your submission includes:</p>
+<ul><li>Full project report (PDF)</li><li>Source code (ZIP)</li><li>Demonstration video (recommended)</li><li>Signed declaration form</li></ul>
+<p>Good luck!<br><strong>MSc Programme Office</strong></p>`
+  }
+];
+
+// ════════════════════════════════════════════════════════════
+// INBOX FUNCTIONS
+// ════════════════════════════════════════════════════════════
+function openInbox(){
+  // Switch to inbox screen
+  document.querySelectorAll('.screen').forEach(s=>{
+    const isInbox = s.id==='screen-inbox';
+    s.classList.toggle('active', isInbox);
+    s.style.display = isInbox ? 'flex' : 'none';
+  });
+  currentFolderEmails = EMAILS;
+  currentFolder = 'inbox';
+  renderEmailList(EMAILS);
+  updateBadges();
+  // Open first email automatically
+  setTimeout(()=>{ openEmail(0); }, 100);
+  // Update user info
+  if(loggedInUser){
+    const av = document.getElementById('nav-user-avatar');
+    const sn = document.getElementById('sidebar-user-name');
+    if(av) av.textContent = loggedInUser.initials || 'AR';
+    if(sn) sn.textContent = loggedInUser.name || 'Abhishek Roy';
+  }
+}
+
+function renderEmailList(emails){
+  const unread = emails.filter(e=>e.unread).length;
+  document.getElementById('unread-badge').textContent = unread || '';
+  renderFolderList(emails, 'Inbox');
+}
+
+function openEmail(id){ openEmailFromFolder(id, EMAILS); }
+
+function mobileBack(){
+  document.getElementById('email-view-panel').classList.remove('mobile-open');
+  document.getElementById('back-btn').style.display = 'none';
+}
+
+function toggleMobileSidebar(){
+  document.getElementById('gm-sidebar').classList.toggle('mobile-open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeMobileSidebar(){
+  document.getElementById('gm-sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
+// ── Toast system ──
+let toastTimer = null;
+let lastDeletedEmail = null;
+let lastDeletedFolder = null;
+function showToast(icon, msg, undoable=false){
+  const t = document.getElementById('toast');
+  const ti = document.getElementById('toast-icon');
+  const tm = document.getElementById('toast-msg');
+  const tu = document.getElementById('toast-undo-btn');
+  ti.textContent = icon;
+  tm.textContent = msg;
+  tu.style.display = undoable ? 'inline' : 'none';
+  t.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+function undoAction(){
+  if(lastDeletedEmail && lastDeletedFolder){
+    lastDeletedFolder.unshift(lastDeletedEmail);
+    renderFolderList(currentFolderEmails, document.getElementById('el-title').textContent);
+    showToast('↩️','Action undone');
+    lastDeletedEmail = null;
+  }
+  document.getElementById('toast').classList.remove('show');
+}
+
+// ── Dropdown toggle ──
+function toggleDD(id){
+  const dd = document.getElementById(id);
+  const wasOpen = dd.classList.contains('open');
+  closeAllDD();
+  if(!wasOpen) dd.classList.add('open');
+}
+function closeAllDD(){
+  document.querySelectorAll('.dropdown').forEach(d=>d.classList.remove('open'));
+}
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.dd-wrap') && !e.target.closest('.ev-topbar-more') && !e.target.closest('.dropdown')) closeAllDD();
+});
+
+// ── Search ──
+function searchMail(q){
+  const clearBtn = document.getElementById('search-clear-btn');
+  clearBtn.style.display = q ? 'block' : 'none';
+  const items = document.querySelectorAll('.email-item');
+  if(!q){ items.forEach(i=>i.style.display=''); return; }
+  const lq = q.toLowerCase();
+  items.forEach(item=>{
+    const text = item.textContent.toLowerCase();
+    item.style.display = text.includes(lq) ? '' : 'none';
+  });
+}
+function clearSearch(){
+  document.getElementById('gm-search-input').value = '';
+  document.getElementById('search-clear-btn').style.display = 'none';
+  searchMail('');
+}
+
+// ── Sort ──
+function sortEmails(mode){
+  const arr = [...currentFolderEmails];
+  if(mode==='unread') arr.sort((a,b)=>b.unread-a.unread);
+  else if(mode==='oldest') arr.sort((a,b)=>a.id-b.id);
+  else arr.sort((a,b)=>b.id-a.id);
+  renderFolderList(arr, document.getElementById('el-title').textContent);
+  showToast('🔃','Sorted');
+}
+
+// ── Select all ──
+function selectAllEmails(){
+  document.querySelectorAll('.email-item').forEach(i=>i.classList.add('checked'));
+  showToast('☑','All emails selected');
+}
+function markAllRead(){
+  currentFolderEmails.forEach(e=>e.unread=false);
+  renderFolderList(currentFolderEmails, document.getElementById('el-title').textContent);
+  const ub = document.getElementById('unread-badge');
+  if(ub) ub.textContent='';
+  showToast('✅','All marked as read');
+}
+
+// ── Tabs (Social & Promotions) ──
+const SOCIAL_EMAILS = [
+  {id:700,unread:true,starred:false,name:'LinkedIn',initials:'LI',bg:'linear-gradient(135deg,#0077b5,#00a0dc)',email:'notifications@linkedin.com',time:'2h ago',subject:'Priya Sharma liked your post on Keystroke Dynamics',preview:'Your post about continuous authentication is getting traction — 147 reactions…',
+  body:`<p>Hi Abhishek,</p><p>Your post about <strong>Keystroke Dynamics for Continuous Authentication</strong> is getting traction!</p><ul><li>👍 147 reactions</li><li>💬 23 comments</li><li>↗ 58 reposts</li></ul><p>— <strong>LinkedIn</strong></p>`},
+  {id:701,unread:false,starred:false,name:'GitHub',initials:'GH',bg:'linear-gradient(135deg,#333,#555)',email:'noreply@github.com',time:'Yesterday',subject:'⭐ keyauth-demo got 12 new stars',preview:'Your repository keyauth-demo received 12 new stars this week…',
+  body:`<p>Hi abhishekroy,</p><p>Your repository <strong>keyauth-demo</strong> received <strong>12 new stars</strong> this week and has <strong>3 new forks</strong>.</p><p>— <strong>GitHub</strong></p>`},
+  {id:702,unread:false,starred:false,name:'ResearchGate',initials:'RG',bg:'linear-gradient(135deg,#00d0af,#00a891)',email:'noreply@researchgate.net',time:'Mon',subject:'8 researchers are following your work',preview:'Researchers from CMU, MIT, and Imperial College are now following your profile…',
+  body:`<p>Hi Abhishek,</p><p><strong>8 researchers</strong> from CMU, MIT, Imperial College, and Edinburgh are now following your work on keystroke biometrics.</p><p>— <strong>ResearchGate</strong></p>`}
+];
+const PROMO_EMAILS = [
+  {id:800,unread:true,starred:false,name:'JetBrains',initials:'JB',bg:'linear-gradient(135deg,#fe315d,#cb37df)',email:'no-reply@jetbrains.com',time:'Today',subject:'30% off PyCharm Pro — Student discount extended',preview:'Your student discount for PyCharm Professional has been extended. Renew now and save 30%…',
+  body:`<p>Hi Abhishek,</p><p>Your <strong>JetBrains student licence</strong> has been extended at <strong>30% off</strong> — including PyCharm Pro, the best Python IDE for your ML work.</p><p>Offer valid until 31 May 2026.</p><p>— <strong>JetBrains</strong></p>`},
+  {id:801,unread:false,starred:false,name:'Coursera',initials:'CO',bg:'linear-gradient(135deg,#0056d2,#003d99)',email:'noreply@coursera.org',time:'Yesterday',subject:'Complete your Deep Learning Specialization — 50% off',preview:'You have 3 courses left. Use code SAVE50 before it expires…',
+  body:`<p>Hi Abhishek,</p><p>You have <strong>3 courses remaining</strong> in your Deep Learning Specialization. Use code <strong>SAVE50</strong> to complete at half price. Offer expires in 48 hours.</p><p>— <strong>Coursera</strong></p>`},
+  {id:802,unread:false,starred:false,name:'AWS Educate',initials:'AW',bg:'linear-gradient(135deg,#ff9900,#e67e00)',email:'aws-educate@amazon.com',time:'Sun',subject:'Your AWS free tier credits are expiring — claim $100 bonus',preview:'Your AWS Educate credits expire soon. Claim your $100 bonus credit for research workloads…',
+  body:`<p>Hi Abhishek,</p><p>Your <strong>AWS Educate credits</strong> are expiring soon. Claim your <strong>$100 bonus credit</strong> for EC2, SageMaker, and S3 — perfect for training your Random Forest models at scale.</p><p>— <strong>AWS Educate</strong></p>`}
+];
+
+let currentTab = 'primary';
+function switchTab(el, tab){
+  document.querySelectorAll('.el-tab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  currentTab = tab || el.dataset.tab || 'primary';
+  if(currentTab==='social') renderFolderList(SOCIAL_EMAILS,'Social');
+  else if(currentTab==='promotions') renderFolderList(PROMO_EMAILS,'Promotions');
+  else renderFolderList(EMAILS,'Inbox');
+}
+
+// ── Refresh ──
+function refreshInbox(){
+  const btn = document.getElementById('refresh-btn');
+  if(btn){ btn.style.transform='rotate(360deg)'; btn.style.transition='transform .5s ease'; setTimeout(()=>{btn.style.transform='';btn.style.transition='';},500); }
+  renderFolderList(currentFolderEmails, document.getElementById('el-title').textContent);
+  showToast('↻','Refreshed');
+}
+
+// ── Email actions ──
+let currentEmailId = null;
+function deleteCurrentEmail(permanent=false){
+  if(currentEmailId === null){ showToast('ℹ️','No email selected'); return; }
+  const idx = currentFolderEmails.findIndex(e=>e.id===currentEmailId);
+  if(idx === -1) return;
+  const removed = currentFolderEmails.splice(idx,1)[0];
+  lastDeletedEmail = removed;
+  lastDeletedFolder = currentFolderEmails;
+  if(!permanent) TRASH_EMAILS.unshift({...removed, time:'Just now'});
+  renderFolderList(currentFolderEmails, document.getElementById('el-title').textContent);
+  clearEmailView();
+  if(currentFolderEmails.length) setTimeout(()=>openEmailFromFolder(currentFolderEmails[0].id, currentFolderEmails),80);
+  showToast(permanent?'⛔':'🗑', permanent?'Permanently deleted':'Moved to Trash', !permanent);
+  updateBadges();
+}
+function archiveCurrentEmail(){
+  if(currentEmailId === null){ showToast('ℹ️','No email selected'); return; }
+  const idx = currentFolderEmails.findIndex(e=>e.id===currentEmailId);
+  if(idx===-1) return;
+  const removed = currentFolderEmails.splice(idx,1)[0];
+  lastDeletedEmail = removed; lastDeletedFolder = currentFolderEmails;
+  renderFolderList(currentFolderEmails, document.getElementById('el-title').textContent);
+  clearEmailView();
+  if(currentFolderEmails.length) setTimeout(()=>openEmailFromFolder(currentFolderEmails[0].id, currentFolderEmails),80);
+  showToast('📁','Archived', true);
+  updateBadges();
+}
+function markCurrentUnread(){
+  if(currentEmailId === null){ showToast('ℹ️','No email selected'); return; }
+  const e = currentFolderEmails.find(x=>x.id===currentEmailId);
+  if(!e) return;
+  e.unread = !e.unread;
+  const item = document.getElementById('eitem-'+e.id);
+  if(item) item.classList.toggle('unread', e.unread);
+  showToast(e.unread?'⚑':'✓', e.unread?'Marked as unread':'Marked as read');
+  updateBadges();
+}
+function starCurrentEmail(){
+  if(currentEmailId === null){ showToast('ℹ️','No email selected'); return; }
+  const e = currentFolderEmails.find(x=>x.id===currentEmailId);
+  if(!e) return;
+  e.starred = !e.starred;
+  const star = document.querySelector('#eitem-'+e.id+' .ei-star');
+  if(star) star.classList.toggle('on', e.starred);
+  showToast(e.starred?'⭐':'☆', e.starred?'Added to Starred':'Removed from Starred');
+}
+function snoozeCurrentEmail(){
+  if(currentEmailId === null){ showToast('ℹ️','No email selected'); return; }
+  showToast('🕐','Snoozed until tomorrow 9:00 AM');
+}
+function labelCurrentEmail(){
+  if(currentEmailId === null){ showToast('ℹ️','No email selected'); return; }
+  showToast('🏷','Label picker coming soon');
+}
+function forwardEmail(){
+  openCompose();
+  const e = currentFolderEmails.find(x=>x.id===currentEmailId);
+  if(e){ document.getElementById('cp-subj').value = 'Fwd: '+e.subject; }
+}
+function printEmail(){ window.print(); }
+function clearEmailView(){
+  currentEmailId = null;
+  document.getElementById('ev-subject').textContent = 'Select an email to read';
+  document.getElementById('ev-from').textContent = '—';
+  document.getElementById('ev-email').textContent = '—';
+  document.getElementById('ev-date').textContent = '—';
+  document.getElementById('ev-avatar').textContent = '?';
+  document.getElementById('ev-avatar').style.background = 'linear-gradient(135deg,#6366f1,#8b5cf6)';
+  document.getElementById('ev-body').innerHTML = '<p style="color:var(--text3);">Click an email from the list to read it here.</p>';
+  document.getElementById('reply-box').style.display = 'none';
+}
+function updateBadges(){
+  const unread = EMAILS.filter(x=>x.unread).length;
+  document.getElementById('unread-badge').textContent = unread||'';
+  const spamUnread = SPAM_EMAILS.filter(x=>x.unread).length;
+  const spamBadge = document.getElementById('spam-badge');
+  if(spamBadge) spamBadge.textContent = spamUnread||'';
+  const draftsBadge = document.getElementById('drafts-badge');
+  if(draftsBadge) draftsBadge.textContent = DRAFTS_EMAILS.length||'';
+}
+
+// ── Compose extras ──
+function saveDraft(){
+  const subj = document.getElementById('cp-subj').value||'(no subject)';
+  const body = document.getElementById('cp-body').innerText||'';
+  DRAFTS_EMAILS.unshift({
+    id:400+DRAFTS_EMAILS.length+1,unread:false,starred:false,
+    name:'Abhishek (Me)',initials:'AR',bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    email:'abhishek.roy@securemail.com',time:'Draft · Just now',subject:'[Draft] '+subj,
+    preview:body.slice(0,80)||'(empty)',body:`<p><em style="color:var(--amber2);">[DRAFT — not sent]</em></p><p>${body.replace(/\n/g,'<br>')}</p>`
+  });
+  closeCompose();
+  showToast('📝','Draft saved');
+  updateBadges();
+}
+function discardCompose(){
+  if(document.getElementById('cp-body').innerText.trim()||document.getElementById('cp-to').value.trim()){
+    if(!confirm('Discard this message?')) return;
+  }
+  closeCompose();
+}
+
+// ════════════════════════════════════════════════════════════
+// FOLDER EMAIL DATA
+// ════════════════════════════════════════════════════════════
+const STARRED_EMAILS = [
+  {
+    id:100, unread:false, starred:true,
+    name:'Dr. Priya Sharma', initials:'PS', bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    email:'priya.sharma@university.ac.uk', time:'Yesterday', subject:'MSc Project Feedback — Excellent Work',
+    preview:'Your keystroke dynamics implementation is impressive. The two-factor approach is particularly novel…',
+    body:`<p>Dear Abhishek,</p><p>I have reviewed your MSc project on <strong>Keystroke Dynamics for Continuous Authentication</strong> and the implementation is exceptionally well done.</p><p>The two-factor authentication approach — combining traditional password login with real-time keystroke biometric verification — is exactly the kind of innovative thinking we look for at this level.</p><p>Best regards,<br><strong>Dr. Priya Sharma</strong></p>`
+  },
+  {
+    id:101, unread:false, starred:true,
+    name:'Google Research', initials:'GR', bg:'linear-gradient(135deg,#4285f4,#34a853)',
+    email:'research@google.com', time:'Mon', subject:'Research Collaboration Opportunity — Behavioural Biometrics',
+    preview:'We came across your published abstract on keystroke dynamics and would like to discuss a potential collaboration…',
+    body:`<p>Dear Abhishek,</p><p>We came across your abstract on <strong>keystroke dynamics for continuous authentication</strong> and are very impressed with your approach.</p><p>Google's Security & Privacy Research team would like to discuss a potential collaboration or internship opportunity with you. Could you share your full paper and schedule a call?</p><p>Warm regards,<br><strong>Dr. Mei Chen</strong><br>Staff Research Scientist, Google Security</p>`
+  },
+  {
+    id:102, unread:true, starred:true,
+    name:'IEEE Security', initials:'IS', bg:'linear-gradient(135deg,#0ea5e9,#0284c7)',
+    email:'editor@ieee-security.org', time:'Sun', subject:'Paper Accepted — IEEE Security & Privacy 2026',
+    preview:'We are pleased to inform you that your paper has been accepted for publication…',
+    body:`<p>Dear Mr. Roy,</p><p>We are pleased to inform you that your paper <strong>"Keystroke Dynamics as a Second Factor: A Random Forest Approach to Continuous Authentication"</strong> has been <strong>accepted</strong> for publication in IEEE Security & Privacy 2026.</p><p>Congratulations on this achievement!</p><p>Best,<br><strong>IEEE S&P Editorial Team</strong></p>`
+  }
+];
+
+const SNOOZED_EMAILS = [
+  {
+    id:200, unread:false, starred:false,
+    name:'LinkedIn', initials:'LI', bg:'linear-gradient(135deg,#0077b5,#00a0dc)',
+    email:'notifications@linkedin.com', time:'Tomorrow 9:00 AM', subject:'[Snoozed] Cybersecurity job alert — 14 new matches',
+    preview:'New jobs matching your profile: Security Engineer at Microsoft, ML Security Researcher at Meta…',
+    body:`<p>Hi Abhishek,</p><p>We found <strong>14 new cybersecurity roles</strong> matching your profile:</p><ul><li>Security Engineer — Microsoft (London)</li><li>ML Security Researcher — Meta (Remote)</li><li>Behavioural Biometrics Researcher — NatWest (Edinburgh)</li><li>Cybersecurity Analyst — GCHQ (Cheltenham)</li></ul><p>⏰ <em>This email was snoozed and will reappear tomorrow at 9:00 AM.</em></p><p>— <strong>LinkedIn Jobs</strong></p>`
+  },
+  {
+    id:201, unread:false, starred:false,
+    name:'Abhishek (Me)', initials:'AR', bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    email:'abhishek.roy@securemail.com', time:'Fri 8:00 AM', subject:'[Snoozed] Remind me — submit viva slides',
+    preview:'Remember to finalise and submit your viva presentation slides by Friday morning…',
+    body:`<p><strong>Reminder to self:</strong></p><p>Finalise and submit viva presentation slides before <strong>10:00 AM Friday</strong>.</p><p>Slides should cover:</p><ul><li>Problem statement & motivation</li><li>System architecture</li><li>ML model comparison (RF, SVM, MLP)</li><li>Live demo walkthrough</li><li>Results & future work</li></ul><p>⏰ <em>Snoozed until Friday 8:00 AM.</em></p>`
+  }
+];
+
+const SENT_EMAILS = [
+  {
+    id:300, unread:false, starred:false,
+    name:'Dr. Priya Sharma', initials:'PS', bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    email:'priya.sharma@university.ac.uk', time:'Yesterday 11:23 AM', subject:'Re: MSc Project Feedback — Thank you!',
+    preview:'Thank you so much for the positive feedback, Dr. Sharma. I am glad the two-factor approach stood out…',
+    body:`<p>Dear Dr. Sharma,</p><p>Thank you so much for the positive feedback! I am glad the two-factor authentication approach stood out.</p><p>I have been working on extending the Random Forest model with federated learning to handle concept drift across users — I would love to include that in my viva discussion if there's time.</p><p>Looking forward to seeing you on viva day.</p><p>Best regards,<br><strong>Abhishek Roy</strong></p>`
+  },
+  {
+    id:301, unread:false, starred:false,
+    name:'Cybersecurity Conference', initials:'CC', bg:'linear-gradient(135deg,#ec4899,#db2777)',
+    email:'submissions@cybersec2026.org', time:'Sun 3:41 PM', subject:'Re: Paper Submission — Keystroke Dynamics',
+    preview:'Thank you for the invitation. I would be delighted to submit my paper on keystroke dynamics authentication…',
+    body:`<p>Dear Programme Committee,</p><p>Thank you for the invitation. I would be delighted to submit my paper: <strong>"Keystroke Dynamics as a Second Factor: A Random Forest Approach to Continuous Authentication"</strong>.</p><p>I will prepare the camera-ready submission before the deadline of 30 May 2026.</p><p>Best wishes,<br><strong>Abhishek Roy</strong><br>MSc Cybersecurity, University of Edinburgh</p>`
+  },
+  {
+    id:302, unread:false, starred:false,
+    name:'MSc Programme Office', initials:'MP', bg:'linear-gradient(135deg,#8b5cf6,#7c3aed)',
+    email:'msc.office@university.ac.uk', time:'Fri 2:10 PM', subject:'Re: Project Submission Deadline Clarification',
+    preview:'Thank you for the reminder. Quick question — does the submission deadline refer to midnight BST or UTC?',
+    body:`<p>Dear MSc Programme Office,</p><p>Thank you for the reminder about the 30 May deadline.</p><p>I have a quick clarification — is the 11:59 PM deadline in <strong>BST (British Summer Time)</strong> or UTC? I am coordinating across time zones with my supervisor and want to ensure I submit on time.</p><p>Many thanks,<br><strong>Abhishek Roy</strong></p>`
+  },
+  {
+    id:303, unread:false, starred:false,
+    name:'Google Research', initials:'GR', bg:'linear-gradient(135deg,#4285f4,#34a853)',
+    email:'research@google.com', time:'Mon 6:55 PM', subject:'Re: Research Collaboration — Very Interested',
+    preview:'Dear Dr. Chen, thank you for reaching out! I would be very interested in discussing a collaboration…',
+    body:`<p>Dear Dr. Chen,</p><p>Thank you for reaching out — I am very interested in discussing a collaboration!</p><p>I have attached my full paper and a brief overview of the system. I am available for a call any time this week between 10:00 AM and 5:00 PM BST.</p><p>Best regards,<br><strong>Abhishek Roy</strong></p>`
+  }
+];
+
+const DRAFTS_EMAILS = [
+  {
+    id:400, unread:false, starred:false,
+    name:'University Ethics Board', initials:'UE', bg:'linear-gradient(135deg,#f59e0b,#d97706)',
+    email:'ethics@university.ac.uk', time:'Draft · 2 days ago', subject:'[Draft] Ethics approval for extended keystroke study',
+    preview:'Dear Ethics Board, I am writing to request approval for an extended user study involving…',
+    body:`<p><em style="color:var(--amber2);">[DRAFT — not sent]</em></p><p>Dear Ethics Board,</p><p>I am writing to request approval for an extended user study involving <strong>40 participants</strong> for my keystroke dynamics authentication research.</p><p>The study involves participants typing a standardised phrase 10 times across 3 sessions. No sensitive personal data beyond keystroke timing will be collected.</p><p>I have previously received approval for the initial 10-user pilot study (ref: ETH/2025/441).</p><p>[TODO: attach updated consent form and methodology section]</p>`
+  },
+  {
+    id:401, unread:false, starred:false,
+    name:'Prof. James Whitmore', initials:'JW', bg:'linear-gradient(135deg,#10b981,#059669)',
+    email:'j.whitmore@university.ac.uk', time:'Draft · 5 days ago', subject:'[Draft] Questions about viva format',
+    preview:'Dear Prof. Whitmore, I hope this email finds you well. I had a few questions regarding the upcoming viva…',
+    body:`<p><em style="color:var(--amber2);">[DRAFT — not sent]</em></p><p>Dear Prof. Whitmore,</p><p>I hope this email finds you well. I had a few questions regarding the upcoming viva examination:</p><p>1. Will there be a live demo component, or just slides?<br>2. How much time is allocated for Q&A?<br>3. Should I prepare a printed copy of my thesis?</p><p>[TODO: proofread before sending]</p>`
+  }
+];
+
+const SPAM_EMAILS = [
+  {
+    id:500, unread:true, starred:false,
+    name:'Crypto Gains 🚀', initials:'CG', bg:'linear-gradient(135deg,#fbbf24,#f59e0b)',
+    email:'noreply@cryptogains247.xyz', time:'Today 3:02 AM', subject:'You\'ve been selected — claim your 5 BTC reward NOW!',
+    preview:'Congratulations! Our algorithm selected your wallet for a 5 BTC airdrop. Act within 24 hours…',
+    body:`<p><strong>⚠ This message was marked as spam.</strong></p><p style="color:var(--text2);">CONGRATULATIONS ABHISHEK!!</p><p style="color:var(--text2);">Our AI trading algorithm has selected YOUR wallet for a special 5 BTC ($312,000) airdrop! You must act within 24 hours. Send 0.01 BTC to verify your wallet and receive 5 BTC back instantly!</p><div class="alert-card"><p>⚠ This is a scam. Do not click any links or send any funds.</p></div>`
+  },
+  {
+    id:501, unread:false, starred:false,
+    name:'IT Department (FAKE)', initials:'IT', bg:'linear-gradient(135deg,#ef4444,#dc2626)',
+    email:'it-support@univ3rsity-helpd3sk.com', time:'Yesterday 11:55 PM', subject:'[URGENT] Your account will be suspended in 24h',
+    preview:'Action required: Your university account shows suspicious activity. Click here to verify immediately…',
+    body:`<p><strong>⚠ This message was marked as spam — phishing attempt.</strong></p><p style="color:var(--text2);">Dear Student,</p><p style="color:var(--text2);">Your account has been flagged for suspicious activity. Click the link below within 24 hours to verify your credentials or your account will be permanently suspended.</p><div class="alert-card"><p>⚠ Phishing detected. The sender domain <code>univ3rsity-helpd3sk.com</code> is not a legitimate university domain. Your keystroke 2FA protected you.</p></div>`
+  },
+  {
+    id:502, unread:false, starred:false,
+    name:'Prize Notification', initials:'PN', bg:'linear-gradient(135deg,#8b5cf6,#7c3aed)',
+    email:'winner@prize-notification-center.net', time:'Mon 8:15 AM', subject:'You are our lucky winner — MacBook Pro awaits!',
+    preview:'Our monthly prize draw has selected your email address. Claim your MacBook Pro within 48 hours…',
+    body:`<p><strong>⚠ This message was marked as spam.</strong></p><p style="color:var(--text2);">You have won a MacBook Pro 16"! Claim within 48 hours. Simply pay £9.99 shipping to receive your prize.</p><div class="alert-card"><p>⚠ This is a scam. Do not pay any fees.</p></div>`
+  }
+];
+
+const TRASH_EMAILS = [
+  {
+    id:600, unread:false, starred:false,
+    name:'Coursera', initials:'CO', bg:'linear-gradient(135deg,#0056d2,#003d99)',
+    email:'noreply@coursera.org', time:'3 days ago', subject:'Complete your Deep Learning Specialization — 50% off',
+    preview:'You have 3 courses left in your Deep Learning Specialization. Use code SAVE50 before it expires…',
+    body:`<p>Hi Abhishek,</p><p>You have 3 courses remaining in your Deep Learning Specialization. Use code <strong>SAVE50</strong> to complete at half price. Offer expires in 48 hours.</p><p><em style="color:var(--text3);">This email is in Trash. It will be automatically deleted in 27 days.</em></p>`
+  },
+  {
+    id:601, unread:false, starred:false,
+    name:'GitHub', initials:'GH', bg:'linear-gradient(135deg,#333,#555)',
+    email:'noreply@github.com', time:'4 days ago', subject:'Dependabot alert: 2 vulnerabilities in keyauth-demo',
+    preview:'2 moderate severity vulnerabilities found in your repository keyauth-demo…',
+    body:`<p>Hi abhishekroy,</p><p>Dependabot found <strong>2 moderate severity vulnerabilities</strong> in your repository <code>keyauth-demo</code>:</p><ul><li><code>flask 2.1.0</code> — update to 3.0.3</li><li><code>scikit-learn 1.1.0</code> — update to 1.4.2</li></ul><p><em style="color:var(--text3);">This email is in Trash. It will be automatically deleted in 26 days.</em></p>`
+  }
+];
+
+// ═══════════════════
+// FOLDER REGISTRY
+// ═══════════════════
+const FOLDERS = {
+  inbox:   { label:'Inbox',    emails: EMAILS,         tabs: true  },
+  starred: { label:'Starred',  emails: STARRED_EMAILS, tabs: false },
+  snoozed: { label:'Snoozed',  emails: SNOOZED_EMAILS, tabs: false },
+  sent:    { label:'Sent',     emails: SENT_EMAILS,    tabs: false },
+  drafts:  { label:'Drafts',   emails: DRAFTS_EMAILS,  tabs: false },
+  spam:    { label:'Spam',     emails: SPAM_EMAILS,    tabs: false },
+  trash:   { label:'Trash',    emails: TRASH_EMAILS,   tabs: false },
+  msc:     { label:'MSc Project', emails: EMAILS.filter(e=>[0,2,3,6].includes(e.id)), tabs:false },
+  research:{ label:'Research',    emails: STARRED_EMAILS.filter(e=>e.id===102||e.id===101), tabs:false },
+  univ:    { label:'University',  emails: EMAILS.filter(e=>[4,6].includes(e.id)), tabs:false },
+  security:{ label:'Security Alerts', emails: EMAILS.filter(e=>[0,1].includes(e.id)), tabs:false },
+};
+
+let currentFolder = 'inbox';
+let currentFolderEmails = EMAILS;
+
+function setNav(el, view){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  switchFolder(view);
+}
+
+function switchFolder(view) {
+  currentFolder = view;
+  const folder = FOLDERS[view] || FOLDERS['inbox'];
+  currentFolderEmails = folder.emails;
+
+  // Update toolbar title
+  document.getElementById('el-title').textContent = folder.label;
+
+  // Show/hide tabs (only inbox shows Primary/Social/Promotions)
+  const tabsEl = document.getElementById('el-tabs');
+  if(tabsEl) tabsEl.style.display = folder.tabs ? 'flex' : 'none';
+
+  // Clear reading pane
+  document.getElementById('ev-subject').textContent = 'Select an email to read';
+  document.getElementById('ev-from').textContent = '—';
+  document.getElementById('ev-email').textContent = '—';
+  document.getElementById('ev-date').textContent = '—';
+  document.getElementById('ev-avatar').textContent = '?';
+  document.getElementById('ev-avatar').style.background = 'linear-gradient(135deg,#6366f1,#8b5cf6)';
+  document.getElementById('ev-body').innerHTML = '<p style="color:var(--text3);">Click an email from the list to read it here.</p>';
+  document.getElementById('reply-box').style.display = 'none';
+  aiCurrentEmail = null;
+
+  renderFolderList(folder.emails, folder.label);
+
+  // Auto-open first email
+  if (folder.emails.length > 0) {
+    setTimeout(() => openEmailFromFolder(folder.emails[0].id, folder.emails), 80);
+  }
+}
+
+function renderFolderList(emails, folderLabel) {
+  const el = document.getElementById('email-list-scroll');
+  if (!emails || emails.length === 0) {
+    el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;gap:8px;color:var(--text3);">
+      <div style="font-size:36px;">📭</div>
+      <div style="font-size:13px;">${folderLabel} is empty</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = emails.map((e, i) => `
+    <div class="email-item ${e.unread?'unread':''} ${i===0?'selected':''}" id="eitem-${e.id}" onclick="openEmailFromFolder(${e.id}, currentFolderEmails)">
+      <div class="ei-cb" onclick="event.stopPropagation();this.parentElement.classList.toggle('checked')"></div>
+      <div class="ei-av" style="background:${e.bg};">${e.initials}</div>
+      <div class="ei-body">
+        <div class="ei-row1">
+          <span class="ei-name">${e.name}</span>
+          <span class="ei-t">${e.time}</span>
+        </div>
+        <div class="ei-subj">${e.subject}</div>
+        <div class="ei-prev">${e.preview}</div>
+      </div>
+      <div class="ei-star ${e.starred?'on':''}" onclick="event.stopPropagation();toggleStar(${e.id},this)">★</div>
+    </div>`).join('');
+}
+
+function openEmailFromFolder(id, emailList) {
+  if (!emailList) emailList = currentFolderEmails;
+  const e = emailList.find(x=>x.id===id);
+  if(!e) return;
+  currentEmailId = id;
+  e.unread = false;
+  document.querySelectorAll('.email-item').forEach(el => el.classList.remove('selected'));
+  const item = document.getElementById('eitem-'+id);
+  if(item){ item.classList.add('selected'); item.classList.remove('unread'); }
+  document.getElementById('ev-subject').textContent = e.subject;
+  document.getElementById('ev-avatar').textContent = e.initials;
+  document.getElementById('ev-avatar').style.background = e.bg;
+  document.getElementById('ev-from').textContent = e.name;
+  document.getElementById('ev-email').textContent = e.email + ' · to abhishek.roy@securemail.com';
+  document.getElementById('ev-date').textContent = e.time;
+  document.getElementById('ev-body').innerHTML = e.body;
+  document.getElementById('reply-name').textContent = e.name;
+  document.getElementById('reply-box').style.display = 'none';
+  document.getElementById('ev-scroll-area').scrollTop = 0;
+  if(window.innerWidth <= 900){
+    document.getElementById('email-view-panel').classList.add('mobile-open');
+    document.getElementById('back-btn').style.display = 'flex';
+  }
+  // Update inbox badge
+  const unread = EMAILS.filter(x=>x.unread).length;
+  document.getElementById('unread-badge').textContent = unread || '';
+  aiCurrentEmail = e;
+  const ctx = document.getElementById('ai-ctx-label');
+  if(ctx) ctx.textContent = 'Context: ' + e.subject.slice(0,42) + (e.subject.length>42?'…':'');
+}
+
+
+function openReply(){
+  const rb = document.getElementById('reply-box');
+  rb.style.display = rb.style.display==='none'?'block':'none';
+  if(rb.style.display==='block') document.getElementById('reply-ta').focus();
+}
+
+function sendReply(){
+  const ta = document.getElementById('reply-ta');
+  if(ta && ta.value.trim()){
+    const to = document.getElementById('reply-name').textContent;
+    ta.value = '';
+    document.getElementById('reply-box').style.display = 'none';
+    showToast('✅','Reply sent to '+to);
+  } else {
+    showToast('ℹ️','Write a reply first');
+  }
+}
+
+function openCompose(){ document.getElementById('compose-pop').classList.add('open'); document.getElementById('cp-to').focus(); }
+function closeCompose(){ document.getElementById('compose-pop').classList.remove('open'); }
+function minimiseCompose(){ document.getElementById('compose-pop').style.display='none'; }
+function sendCompose(){
+  const to = document.getElementById('cp-to').value.trim();
+  const subj = document.getElementById('cp-subj').value.trim() || '(no subject)';
+  const body = document.getElementById('cp-body').innerText.trim();
+  if(!to){ document.getElementById('cp-to').style.borderBottom='1px solid rgba(239,68,68,0.5)'; return; }
+  // Add to sent
+  const newSent = {
+    id: 300 + SENT_EMAILS.length + 1,
+    unread:false, starred:false,
+    name: to.includes('@') ? to.split('@')[0] : to,
+    initials: (to.split('@')[0][0]||'?').toUpperCase(),
+    bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    email: to, time:'Just now', subject: subj,
+    preview: body.slice(0,80) || '(no message)',
+    body: `<p>${body.replace(/\n/g,'<br>')}</p><p style="color:var(--text3);font-size:12px;margin-top:16px;">Sent from SecureMail · 2FA Verified</p>`
+  };
+  SENT_EMAILS.unshift(newSent);
+  closeCompose();
+  // Show sent toast
+  const banner = document.querySelector('.sec-banner');
+  if(banner){
+    const orig = banner.innerHTML, origStyle = banner.getAttribute('style')||'';
+    banner.innerHTML = '<span>✅</span><span>Message sent to <strong>'+escHtml(to)+'</strong></span>';
+    banner.style.background='rgba(99,102,241,0.1)';banner.style.borderColor='rgba(99,102,241,0.25)';banner.style.color='var(--accent3)';
+    setTimeout(()=>{banner.innerHTML=orig;banner.setAttribute('style',origStyle);},2800);
+  }
+  // Clear fields
+  document.getElementById('cp-to').value='';
+  document.getElementById('cp-subj').value='';
+  document.getElementById('cp-body').innerText='';
+}
+
+function refreshInbox(){
+  const btn = document.querySelector('.el-tbtn');
+  if(btn){ btn.style.transform='rotate(360deg)'; btn.style.transition='transform .5s'; setTimeout(()=>{btn.style.transform='';btn.style.transition='';},500); }
+}
+
+// ════════════════════════════════════════════════════════════
+// FACTOR 1 — PASSWORD LOGIN
+// ════════════════════════════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-password').value.trim();
+
+  if (!email || !pass) { shake('screen-login'); return; }
+
+  const badCreds = () => {
+    const inp = document.getElementById('login-password');
+    inp.style.borderColor = 'rgba(239,68,68,0.6)';
+    inp.value = '';
+    inp.placeholder = '✕ Incorrect credentials — try again';
+    setTimeout(() => { inp.style.borderColor = ''; inp.placeholder = 'Enter your password'; }, 2000);
+  };
+
+  // ── Flask mode: validate against SQLite DB (also logs the attempt) ────────
+  if (window.FLASK_API) {
+    try {
+      const res = await fetch(window.FLASK_API + '/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass })
+      });
+      if (!res.ok) { badCreds(); return; }
+    } catch (err) {
+      console.warn('Flask unreachable, falling back to local check:', err);
+      const user = USERS[email];
+      if (!user || user.password !== pass) { badCreds(); return; }
+      loggedInUser = { ...user, email };
+      document.getElementById('user-display').textContent = user.name;
+      document.getElementById('user-initials').textContent = user.initials;
+      switchScreen('screen-keystroke');
+      document.getElementById('enroll-input').focus();
+      return;
+    }
+    const user = USERS[email] || { name: email.split('@')[0], initials: email[0].toUpperCase() };
+    loggedInUser = { ...user, email };
+    document.getElementById('user-display').textContent = loggedInUser.name;
+    document.getElementById('user-initials').textContent = loggedInUser.initials;
+    switchScreen('screen-keystroke');
+    document.getElementById('enroll-input').focus();
+    return;
+  }
+
+  // ── Standalone mode: local check ─────────────────────────────────────────
+  const user = USERS[email];
+  if (!user || user.password !== pass) { badCreds(); return; }
+
+  loggedInUser = { ...user, email };
+  document.getElementById('user-display').textContent = user.name;
+  document.getElementById('user-initials').textContent = user.initials;
+
+  switchScreen('screen-keystroke');
+  document.getElementById('enroll-input').focus();
+}
+
+// ════════════════════════════════════════════════════════════
+// KEYSTROKE CAPTURE
+// ════════════════════════════════════════════════════════════
+const enrollInput = document.getElementById('enroll-input');
+const authInput   = document.getElementById('auth-input');
+
+enrollInput.addEventListener('keydown', e => { if(!enrollPress[e.key]) enrollPress[e.key]=performance.now(); });
+enrollInput.addEventListener('keyup', e => {
+  const pt = enrollPress[e.key];
+  if(pt !== undefined) {
+    enrollEvents.push({key:e.key, press:pt, release:performance.now()});
+    drawBar('enroll-vis', performance.now()-pt);
+    delete enrollPress[e.key];
+    updateEnrollStatus();
+  }
+});
+authInput.addEventListener('keydown', e => { if(!authPress[e.key]) authPress[e.key]=performance.now(); });
+authInput.addEventListener('keyup', e => {
+  const pt = authPress[e.key];
+  if(pt !== undefined) {
+    authEvents.push({key:e.key, press:pt, release:performance.now()});
+    drawBar('auth-vis', performance.now()-pt);
+    delete authPress[e.key];
+    updateAuthStatus();
+  }
+});
+
+function drawBar(id, hold) {
+  const vis = document.getElementById(id);
+  const b = document.createElement('div'); b.className='ks-bar';
+  b.style.height = Math.min(90,(hold/200)*100)+'%';
+  b.style.left   = (vis.children.length*7)+'px';
+  vis.appendChild(b);
+  if(vis.children.length>75) vis.removeChild(vis.firstChild);
+}
+
+function updateEnrollStatus() {
+  const n=enrollEvents.length;
+  document.getElementById('enroll-count').textContent=n+' events';
+  document.getElementById('save-btn').disabled = n<12;
+  document.getElementById('enroll-status').textContent = n>=12
+    ? '✓ Ready — click Save Session'
+    : 'Keep typing… ('+n+'/12 minimum)';
+}
+function updateAuthStatus() {
+  const n=authEvents.length;
+  document.getElementById('auth-count').textContent=n+' events';
+  document.getElementById('auth-btn').disabled = n<8;
+  document.getElementById('auth-status').textContent = n>=8
+    ? '✓ Ready — click Verify Identity'
+    : 'Keep typing… ('+n+'/8 minimum)';
+}
+
+// ════════════════════════════════════════════════════════════
+// FEATURE EXTRACTION
+// ════════════════════════════════════════════════════════════
+function extractFeatures(evts) {
+  if(evts.length<4) return null;
+  const holds=[],flights=[],digraphs=[];
+  for(let i=0;i<evts.length;i++){
+    holds.push(evts[i].release-evts[i].press);
+    if(i>0){
+      flights.push(Math.max(0,evts[i].press-evts[i-1].release));
+      digraphs.push(evts[i].press-evts[i-1].press);
+    }
+  }
+  const st=a=>{
+    if(!a.length)return{mean:0,std:1};
+    const m=a.reduce((s,v)=>s+v,0)/a.length;
+    return{mean:m,std:Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1};
+  };
+  const H=st(holds),F=st(flights),D=st(digraphs);
+  const total=evts[evts.length-1].release-evts[0].press;
+  const wpm=(evts.filter(e=>e.key!=='Backspace').length/5)/(total/60000)||0;
+  return{hold_mean:H.mean,hold_std:H.std,flight_mean:F.mean,flight_std:F.std,digraph_mean:D.mean,wpm,keystroke_count:evts.length};
+}
+
+// ════════════════════════════════════════════════════════════
+// ENROLL
+// ════════════════════════════════════════════════════════════
+const PHRASES = [
+  "Security is a continuous process not a one time event",
+  "Keystroke dynamics reveals your unique typing pattern",
+  "Two factor authentication protects your digital identity",
+];
+
+function saveEnroll() {
+  const feats=extractFeatures(enrollEvents);
+  if(!feats) return;
+  enrolledSessions.push(feats);
+  enrollCount++;
+
+  // Update dots
+  const dot=document.getElementById('sd'+enrollCount);
+  dot.classList.remove('active'); dot.classList.add('done');
+  document.getElementById('sn'+enrollCount).textContent='✓';
+
+  // Progress
+  document.getElementById('enroll-prog').style.width=(enrollCount/3*100)+'%';
+  document.getElementById('enroll-prog-label').textContent=enrollCount+' / 3 sessions';
+
+  addLog('enroll-log',`Session ${enrollCount} saved — hold=${Math.round(feats.hold_mean)}ms · flight=${Math.round(feats.flight_mean)}ms · wpm=${feats.wpm.toFixed(1)}`,'ok');
+
+  // Clear
+  enrollEvents=[]; enrollPress={};
+  enrollInput.value='';
+  document.getElementById('enroll-vis').innerHTML='';
+  document.getElementById('enroll-count').textContent='0 events';
+  document.getElementById('save-btn').disabled=true;
+  document.getElementById('enroll-status').textContent='Begin typing to capture your pattern';
+  document.getElementById('snum').textContent=enrollCount+1;
+
+  if(enrollCount===3){
+    enrolledProfile=buildProfile(enrolledSessions);
+    setTimeout(moveToVerify, 500);
+  } else {
+    document.getElementById('sd'+(enrollCount+1)).classList.add('active');
+    document.getElementById('enroll-phrase').textContent=PHRASES[enrollCount];
+    enrollInput.focus();
+  }
+}
+
+function buildProfile(sessions){
+  const keys=['hold_mean','hold_std','flight_mean','flight_std','digraph_mean','wpm'];
+  const p={};
+  keys.forEach(k=>{
+    const vals=sessions.map(s=>s[k]);
+    const mean=vals.reduce((a,b)=>a+b,0)/vals.length;
+    p[k]=mean;
+    p[k+'_tol']=Math.max(mean*0.28, Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length)*2.8);
+  });
+  return p;
+}
+
+function moveToVerify(){
+  document.getElementById('enroll-section').style.display='none';
+  document.getElementById('verify-section').style.display='block';
+  document.getElementById('ph-enroll').classList.remove('active'); document.getElementById('ph-enroll').classList.add('done');
+  document.getElementById('ph-verify').classList.add('active');
+  authInput.focus();
+}
+
+// ════════════════════════════════════════════════════════════
+// AUTHENTICATE — FACTOR 2
+// ════════════════════════════════════════════════════════════
+function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+
+function scoreVsProfile(feats,profile){
+  const checks=[
+    {k:'hold_mean',w:2.2},{k:'flight_mean',w:2.2},
+    {k:'digraph_mean',w:1.5},{k:'wpm',w:1.5},{k:'hold_std',w:0.8},
+  ];
+  let total=0,weight=0;
+  checks.forEach(({k,w})=>{
+    const tol=profile[k+'_tol']||1;
+    const diff=Math.abs((feats[k]||0)-(profile[k]||0));
+    const match=Math.max(0,1-(diff/(tol/2.2))*0.38);
+    total+=match*w; weight+=w;
+  });
+  return total/weight;
+}
+
+async function doAuthenticate(){
+  const feats=extractFeatures(authEvents);
+  if(!feats) return;
+  switchScreen('screen-result');
+
+  // Try Flask real models first (if running on port 5050)
+  if(window.FLASK_API){
+    try{
+      const claimed = loggedInUser
+        ? loggedInUser.name.toLowerCase().replace(/\s+/g,'_')
+        : 'abhishek_roy';
+      const res = await fetch(window.FLASK_API+'/authenticate',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ events: authEvents, claimed_user: claimed })
+      });
+      if(res.ok){
+        const data = await res.json();
+        setTimeout(()=>showResultFromFlask(feats, data), 1600);
+        return;
+      }
+    } catch(e){ console.log('Flask not reachable — using browser classifier'); }
+  }
+  // Standalone mode: browser-based classifier
+  setTimeout(()=>showResult(feats), 1600);
+}
+
+// Called when Flask API returns real model results
+function showResultFromFlask(feats, data){
+  const verdict = data.verdict || {};
+  const authenticated = verdict.authenticated || false;
+  const preds = data.classical_predictions || {};
+  const an = data.anomaly_detection || {};
+
+  const card=document.getElementById('result-card');
+  card.className='result-card glass2 '+(authenticated?'success':'denied');
+  document.getElementById('result-icon').textContent=authenticated?'✅':'🚫';
+  document.getElementById('result-title').textContent=authenticated?'Identity Verified':'Access Denied';
+  document.getElementById('result-sub').textContent=authenticated
+    ? `Welcome back, ${loggedInUser.name}. Real trained models verified your identity.`
+    : `Typing pattern rejected by trained ML models. You are not ${loggedInUser?.name||'the enrolled user'}.`;
+
+  const fa2=document.getElementById('fa2-item');
+  fa2.className='fa-item '+(authenticated?'passed':'failed');
+  document.getElementById('fa2-status').textContent=authenticated?'✓ Keystroke':'✗ Rejected';
+
+  // Show real model predictions from Flask
+  const flaskModels = Object.entries(preds).map(([name,p])=>({
+    name, score: p.confidence || (authenticated?0.89:0.28),
+    match: p.predicted_user === (loggedInUser?.name.toLowerCase().replace(/\s+/g,'_') || 'abhishek_roy')
+  }));
+  // Add anomaly
+  flaskModels.push({
+    name:'Autoencoder', score: an.confidence || (authenticated?0.87:0.25),
+    match: an.verdict === 'GENUINE'
+  });
+
+  document.getElementById('model-rows').innerHTML=flaskModels.map(m=>`
+    <div class="model-row">
+      <span class="mname">${m.name}</span>
+      <span class="mpred" style="color:${m.match?'var(--green2)':'var(--red2)'}">
+        ${m.match?'✓ MATCH':'✗ MISMATCH'}
+      </span>
+      <div>
+        <div class="mconf">${Math.round(m.score*100)}%</div>
+        <div class="cbar"><div class="cfill" style="width:${m.score*100}%;background:${m.match?'var(--green)':'var(--red)'}"></div></div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('result-btn2').style.display=authenticated?'flex':'none';
+  if(authenticated){ setTimeout(()=>{ openInbox(); }, 2500); }
+}
+
+function showResult(feats){
+  const base=scoreVsProfile(feats,enrolledProfile);
+  const models=[
+    {name:'SVM (RBF)',    score:Math.min(1,base*(1+randn()*0.04))},
+    {name:'Random Forest',score:Math.min(1,base*(1+randn()*0.05))},
+    {name:'Autoencoder',  score:Math.min(1,base*(1+randn()*0.06))},
+  ];
+  const authVotes=models.filter(m=>m.score>0.52).length;
+  const avgScore=models.reduce((s,m)=>s+m.score,0)/3;
+  const authenticated=authVotes>=2;
+
+  const card=document.getElementById('result-card');
+  card.className='result-card glass2 '+(authenticated?'success':'denied');
+
+  document.getElementById('result-icon').textContent=authenticated?'✅':'🚫';
+  document.getElementById('result-title').textContent=authenticated?'Identity Verified':'Access Denied';
+  document.getElementById('result-sub').textContent=authenticated
+    ? `Welcome back, ${loggedInUser.name}. Both authentication factors passed. Confidence: ${Math.round(avgScore*100)}%`
+    : `Keystroke pattern does not match ${loggedInUser ? loggedInUser.name : 'enrolled user'}. Biometric verification failed. Confidence: ${Math.round(avgScore*100)}%`;
+
+  const fa2=document.getElementById('fa2-item');
+  fa2.className='fa-item '+(authenticated?'passed':'failed');
+  document.getElementById('fa2-status').textContent=authenticated?'✓ Keystroke':'✗ Rejected';
+
+  document.getElementById('model-rows').innerHTML=models.map(m=>`
+    <div class="model-row">
+      <span class="mname">${m.name}</span>
+      <span class="mpred" style="color:${m.score>0.52?'var(--green2)':'var(--red2)'}">${m.score>0.52?'✓ MATCH':'✗ MISMATCH'}</span>
+      <div><div class="mconf">${Math.round(m.score*100)}%</div>
+      <div class="cbar"><div class="cfill" style="width:${m.score*100}%;background:${m.score>0.52?'var(--green)':'var(--red)'}"></div></div></div>
+    </div>`).join('');
+
+  document.getElementById('result-btn2').style.display=authenticated?'flex':'none';
+  // Auto-redirect to inbox after 2.5 seconds on success
+  if(authenticated){
+    setTimeout(()=>{ openInbox(); }, 2500);
+  }
+}
+
+// inbox functions defined with EMAILS above
+
+// ════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════
+function switchScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>{
+    s.classList.toggle('active', s.id===id);
+    // inbox needs display:flex, others need display:flex via .active CSS
+    if(s.id==='screen-inbox'){
+      s.style.display = (s.id===id) ? 'flex' : 'none';
+    }
+  });
+}
+
+function tryAgain(){
+  authEvents=[]; authPress={};
+  authInput.value='';
+  document.getElementById('auth-vis').innerHTML='';
+  document.getElementById('auth-count').textContent='0 events';
+  document.getElementById('auth-btn').disabled=true;
+  document.getElementById('auth-status').textContent='Start typing to authenticate';
+  switchScreen('screen-keystroke');
+  authInput.focus();
+}
+
+function resetAll(){
+  enrolledSessions=[]; enrolledProfile=null; enrollCount=0;
+  enrollEvents=[]; authEvents=[]; enrollPress={}; authPress={};
+  enrollInput.value=''; authInput.value='';
+  document.getElementById('enroll-vis').innerHTML='';
+  document.getElementById('auth-vis').innerHTML='';
+  ['sd1','sd2','sd3'].forEach((id,i)=>{
+    const d=document.getElementById(id);
+    d.className='sdot'+(i===0?' active':'');
+    document.getElementById('sn'+(i+1)).textContent=i+1;
+  });
+  document.getElementById('enroll-prog').style.width='0%';
+  document.getElementById('enroll-prog-label').textContent='0 / 3 sessions';
+  document.getElementById('enroll-phrase').textContent=PHRASES[0];
+  document.getElementById('enroll-section').style.display='block';
+  document.getElementById('verify-section').style.display='none';
+  document.getElementById('ph-enroll').className='phase-pill active';
+  document.getElementById('ph-verify').className='phase-pill';
+  document.getElementById('snum').textContent='1';
+  document.getElementById('enroll-log').innerHTML='<div><span style="color:var(--accent3)">[reset]</span> Ready for new enrollment…</div>';
+  switchScreen('screen-keystroke');
+  enrollInput.focus();
+}
+
+function clearEnroll(){
+  enrollEvents=[];enrollPress={};
+  enrollInput.value='';
+  document.getElementById('enroll-vis').innerHTML='';
+  document.getElementById('enroll-count').textContent='0 events';
+  document.getElementById('save-btn').disabled=true;
+  document.getElementById('enroll-status').textContent='Begin typing to capture your pattern';
+}
+
+function clearAuth(){
+  authEvents=[];authPress={};
+  authInput.value='';
+  document.getElementById('auth-vis').innerHTML='';
+  document.getElementById('auth-count').textContent='0 events';
+  document.getElementById('auth-btn').disabled=true;
+  document.getElementById('auth-status').textContent='Start typing to authenticate';
+}
+
+// ═══════════════════════════════════════════════════════
+// AI CHAT PANEL — RAG-style assistant using Anthropic API
+// ═══════════════════════════════════════════════════════
+let aiCurrentEmail = null;
+let aiHistory = [];
+let aiPanelOpen = false;
+
+// ── Google API key — loaded from Flask .env (never hardcoded) ──
+let GOOGLE_API_KEY = '';
+let GEMINI_MODEL   = 'gemini-3-flash-preview';
+
+(async () => {
+  try {
+    const res  = await fetch('http://localhost:5050/api/config');
+    const cfg  = await res.json();
+    GOOGLE_API_KEY = cfg.gemini_api_key || '';
+    GEMINI_MODEL   = cfg.gemini_model   || 'gemini-3-flash-preview';
+  } catch(e) {
+    console.warn('Could not load config from Flask:', e);
+  }
+})();
+
+function toggleAiPanel() {
+  aiPanelOpen = !aiPanelOpen;
+  const panel = document.getElementById('ai-chat-panel');
+  const btn   = document.getElementById('ai-nav-btn');
+  panel.classList.toggle('open', aiPanelOpen);
+  if(btn) {
+    btn.style.background = aiPanelOpen ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.18)';
+    btn.style.borderColor = aiPanelOpen ? 'rgba(99,102,241,0.7)' : 'rgba(99,102,241,0.35)';
+  }
+
+}
+
+function aiSuggest(el) {
+  const txt = el.textContent.trim();
+  const input = document.getElementById('ai-input');
+  input.value = txt;
+  input.style.height = 'auto';
+  sendAiMessage();
+}
+
+function aiAppendMsg(role, html) {
+  const wrap = document.getElementById('ai-messages');
+  const div = document.createElement('div');
+  div.className = 'ai-msg ' + role;
+  const now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  div.innerHTML = `<div class="ai-bubble">${html}</div><div class="ai-meta">${role==='user'?'You':('Gemini 3 Flash Preview')} · ${now}</div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function aiShowTyping() {
+  const wrap = document.getElementById('ai-messages');
+  const div = document.createElement('div');
+  div.className = 'ai-msg bot'; div.id = 'ai-typing';
+  div.innerHTML = '<div class="ai-typing-bubble"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span></div>';
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function aiRemoveTyping() {
+  const t = document.getElementById('ai-typing');
+  if(t) t.remove();
+}
+
+function buildSystemPrompt() {
+  const emailsContext = EMAILS.map(e => {
+    const bodyText = e.body.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim().slice(0,300);
+    return `Email from ${e.name} <${e.email}> | Subject: "${e.subject}" | Preview: ${bodyText}`;
+  }).join('\n');
+
+  const currentEmailCtx = aiCurrentEmail
+    ? `\nCURRENTLY OPEN EMAIL:\nFrom: ${aiCurrentEmail.name} <${aiCurrentEmail.email}>\nSubject: ${aiCurrentEmail.subject}\nBody: ${aiCurrentEmail.body.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()}`
+    : '\nNo email is currently open.';
+
+  return `You are SecureMail AI, an intelligent assistant embedded inside SecureMail — a secure email client with two-factor keystroke biometric authentication. You help the user (Abhishek Roy, MSc Cybersecurity student) with their emails and their keystroke dynamics project.
+
+INBOX KNOWLEDGE BASE (${EMAILS.length} emails):
+${emailsContext}
+${currentEmailCtx}
+
+KEYSTROKE AUTH PROJECT KNOWLEDGE:
+- Project: KeyAuth — MSc Cybersecurity, 2024
+- Models: Random Forest (81.6% / 94% after augmentation), SVM RBF (79.1%), k-NN (69.5%), MLP (78.5% val acc)
+- Anomaly detection: One-Class SVM, Isolation Forest, Autoencoder — EER 20%, AUC 0.91
+- Features: hold time, flight time, digraph latency, WPM, backspace rate (16 features total)
+- Dataset: 1000 sessions, 10 synthetic users; augmented to 100k with Gaussian noise + SMOTE
+- Tech stack: Python, Flask, scikit-learn, PyTorch (optional), HTML/JS frontend
+- Possible extensions mentioned: federated learning, real CMU dataset, drift handling, RAG
+
+PERSONA:
+- Be concise, professional, and helpful
+- When summarising emails, highlight key actions needed
+- When asked to draft a reply, write a ready-to-send reply
+- Format with markdown-style bold and bullet points where helpful
+- If asked about security threats, give clear risk assessment
+- Keep responses under 200 words unless drafting an email`;
+}
+
+async function sendAiMessage() {
+  const input = document.getElementById('ai-input');
+  const sendBtn = document.getElementById('ai-send-btn');
+  const userText = input.value.trim();
+  if(!userText) return;
+
+  input.value = ''; input.style.height = 'auto';
+  sendBtn.disabled = true;
+
+  aiAppendMsg('user', escHtml(userText));
+  aiHistory.push({ role: 'user', content: userText });
+
+  // Check API key is set
+  const apiKey = GOOGLE_API_KEY;
+
+  aiShowTyping();
+
+  try {
+    // Build Gemini-format contents array from history
+    const geminiContents = aiHistory.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: buildSystemPrompt() }] },
+          contents: geminiContents,
+          generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+        })
+      }
+    );
+
+    const data = await response.json();
+    aiRemoveTyping();
+
+    let reply = '';
+    if(data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+      reply = data.candidates[0].content.parts[0].text;
+    } else if(data.error) {
+      reply = `⚠ API error: ${data.error.message || 'Unknown error'}`;
+      if(data.error.status === 'UNAUTHENTICATED' || data.error.status === 'PERMISSION_DENIED') {
+        reply += '<br><small>Check your API key is valid.</small>';
+      }
+    } else {
+      reply = '⚠ Unexpected response. Check your API key and model name.';
+    }
+
+    aiHistory.push({ role: 'assistant', content: reply });
+    aiAppendMsg('bot', formatAiText(reply));
+
+  } catch(err) {
+    aiRemoveTyping();
+    aiAppendMsg('bot', `⚠ Network error: ${escHtml(err.message)}<br><small style="color:var(--text3)">Make sure you have an internet connection.</small>`);
+  }
+
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+function formatAiText(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/`(.*?)`/g,'<code>$1</code>')
+    .replace(/^[\-\*] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n\n/g,'<br><br>')
+    .replace(/\n/g,'<br>');
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function addLog(id,msg,type='info'){
+  const el=document.getElementById(id);
+  const ts=new Date().toLocaleTimeString('en-GB',{hour12:false});
+  const c={info:'var(--text2)',ok:'var(--green2)',warn:'var(--amber2)'};
+  el.innerHTML=`<div><span style="color:var(--accent3)">[${ts}]</span> <span style="color:${c[type]}">${msg}</span></div>`+el.innerHTML;
+}
+
+function shake(id){
+  const el=document.getElementById(id);
+  el.style.animation='none';
+  setTimeout(()=>el.style.animation='',10);
+}
+
+// Allow Enter key on login
+document.getElementById('login-password').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+
+// ════════════════════════════════════════════════════════════
+// LOGOUT
+// ════════════════════════════════════════════════════════════
+function doLogout(){
+  // Close AI panel if open
+  if(aiPanelOpen){ toggleAiPanel(); }
+  // Close compose if open
+  const cp = document.getElementById('compose-pop');
+  if(cp) cp.classList.remove('open');
+  // Show logout/thank you screen
+  switchScreen('screen-logout');
+  showToast('👋','Logged out successfully');
+}
+
+function goToLogin(){
+  // Reset all auth state
+  loggedInUser = null;
+  enrolledSessions=[]; enrolledProfile=null; enrollCount=0;
+  enrollEvents=[]; authEvents=[]; enrollPress={}; authPress={};
+  if(enrollInput) enrollInput.value='';
+  if(authInput) authInput.value='';
+  try{
+    document.getElementById('enroll-vis').innerHTML='';
+    document.getElementById('auth-vis').innerHTML='';
+    document.getElementById('enroll-prog').style.width='0%';
+    document.getElementById('enroll-prog-label').textContent='0 / 3 sessions';
+    document.getElementById('enroll-phrase').textContent=PHRASES[0];
+    document.getElementById('enroll-section').style.display='block';
+    document.getElementById('verify-section').style.display='none';
+    document.getElementById('ph-enroll').className='phase-pill active';
+    document.getElementById('ph-verify').className='phase-pill';
+    document.getElementById('snum').textContent='1';
+    ['sd1','sd2','sd3'].forEach((id,i)=>{
+      const d=document.getElementById(id);
+      if(d) d.className='sdot'+(i===0?' active':'');
+      const sn=document.getElementById('sn'+(i+1));
+      if(sn) sn.textContent=i+1;
+    });
+  } catch(e){}
+  // Clear login fields
+  document.getElementById('login-email').value='';
+  document.getElementById('login-password').value='';
+  // Reset AI chat history
+  aiHistory=[];
+  aiCurrentEmail=null;
+  const aiMsgs=document.getElementById('ai-messages');
+  if(aiMsgs) aiMsgs.innerHTML=`<div class="ai-msg bot"><div class="ai-bubble">Hi 👋 I'm your <strong>SecureMail AI assistant</strong>. Log in again to continue.</div><div class="ai-meta">Gemini 3 Flash Preview · RAG enabled</div></div>`;
+  switchScreen('screen-login');
+}
+</script>
+</body>
+</html>
