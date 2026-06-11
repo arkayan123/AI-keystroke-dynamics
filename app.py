@@ -347,6 +347,11 @@ def keyauth():
     return render_template('index.html')
 
 
+@app.route('/collector')
+def collector():
+    return send_from_directory(BASE_DIR, 'collector.html')
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
     app.run(host='0.0.0.0', port=port, debug=True)

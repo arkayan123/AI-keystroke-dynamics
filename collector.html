@@ -346,6 +346,33 @@ let pressMap = {};
 let selectedMethod = '';
 let otpIdentifier  = '';
 
+// ── Skip OTP — go directly to collection ─────────────────────────────────
+function goToCollect() {
+  const name = document.getElementById('user-name').value.trim();
+  if (!name) {
+    document.getElementById('user-name').style.borderColor = 'rgba(248,113,113,0.6)';
+    document.getElementById('user-name').placeholder = 'Please enter your name first';
+    setTimeout(() => {
+      document.getElementById('user-name').style.borderColor = '';
+      document.getElementById('user-name').placeholder = 'e.g. abhishek_roy';
+    }, 2000);
+    return;
+  }
+  document.getElementById('screen-setup').style.display     = 'none';
+  document.getElementById('screen-collector').style.display = 'block';
+
+  document.getElementById('step1-dot').className  = 'step-dot done';
+  document.getElementById('step1-dot').textContent = '✓';
+  document.getElementById('line1').className       = 'step-line done';
+  document.getElementById('step2-dot').className   = 'step-dot done';
+  document.getElementById('step2-dot').textContent = '✓';
+  document.getElementById('line2').className       = 'step-line done';
+  document.getElementById('step3-dot').className   = 'step-dot active';
+
+  buildDots();
+  document.getElementById('target-label').textContent = document.getElementById('target-sessions').value;
+}
+
 // ── OTP Flow ──────────────────────────────────────────────────────────────
 function goToOTP() {
   const name = document.getElementById('user-name').value.trim();
