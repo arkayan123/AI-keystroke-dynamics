@@ -97,20 +97,29 @@ def extract_features(events: List[Dict]) -> Dict:
     hold_times, flight_times, digraph_times = [], [], []
 
     for i, ev in enumerate(events):
+
+        if "press_time" not in ev or "release_time" not in ev:
+            continue
+
         ht = ev["release_time"] - ev["press_time"]
         hold_times.append(ht)
 
         if i > 0:
-            ft = ev["press_time"] - events[i - 1]["release_time"]
-            flight_times.append(ft)
-            dg = ev["press_time"] - events[i - 1]["press_time"]
-            digraph_times.append(dg)
+            prev = events[i - 1]
 
-    def safe_stats(arr):
-        if not arr:
-            return 0, 0, 0, 0
-        a = np.array(arr)
-        return float(np.mean(a)), float(np.std(a)), float(np.min(a)), float(np.max(a))
+            if "press_time" in prev and "release_time" in prev:
+                 ft = ev["press_time"] - prev["release_time"] 
+                 flight_times.append(ft)
+
+                 dg = ev["press_time"] - prev["press_time"]
+                 digraph_times.append(dg)
+
+def safe_stats(arr):
+    if not arr:
+        return 0, 0, 0, 0
+
+    a = np.array(arr)
+    return float(np.mean(a)), float(np.std(a)), float(np.min(a)), float(np.max(a))
 
     hm, hs, hmin, hmax = safe_stats(hold_times)
     fm, fs, fmin, fmax = safe_stats(flight_times)

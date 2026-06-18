@@ -512,7 +512,11 @@ input.addEventListener('keyup', e => {
   const pt = pressMap[e.key];
   if (pt !== undefined) {
     const rt = performance.now();
-    events.push({ key: e.key, press: pt, release: rt });
+    events.push({
+      key: e.key,
+      press_time: pt,
+      release_time: rt
+  });
     drawBar(rt - pt);
     delete pressMap[e.key];
     updateStatus();

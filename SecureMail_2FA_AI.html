@@ -2417,8 +2417,12 @@ enrollInput.addEventListener('keydown', e => { if(!enrollPress[e.key]) enrollPre
 enrollInput.addEventListener('keyup', e => {
   const pt = enrollPress[e.key];
   if(pt !== undefined) {
-    enrollEvents.push({key:e.key, press:pt, release:performance.now()});
-    drawBar('enroll-vis', performance.now()-pt);
+    enrollEvents.push({
+      key: e.key,
+      press_time: pt,
+      release_time: performance.now()
+  });
+      drawBar('enroll-vis', performance.now()-pt);
     delete enrollPress[e.key];
     updateEnrollStatus();
   }
@@ -2427,7 +2431,11 @@ authInput.addEventListener('keydown', e => { if(!authPress[e.key]) authPress[e.k
 authInput.addEventListener('keyup', e => {
   const pt = authPress[e.key];
   if(pt !== undefined) {
-    authEvents.push({key:e.key, press:pt, release:performance.now()});
+    authEvents.push({
+      key: e.key,
+      press_time: pt,
+      release_time: performance.now()
+  });
     drawBar('auth-vis', performance.now()-pt);
     delete authPress[e.key];
     updateAuthStatus();
